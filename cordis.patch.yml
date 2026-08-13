@@ -1,0 +1,10 @@
+# dsh-usage-chart 插件层（bundle patch）。
+#
+# 通过 `dsh plugin --profile <name> add ./dsh-usage-chart` 安装后，
+# 这一层会被插入组合配置。config.apiKey 留空时回退到环境变量 DEEPSEEK_API_KEY。
+- insert:
+    - id: dsh-usage-chart
+      name: dsh-usage-chart
+      config:
+        apiKey: ''
+        baseUrl: 'https://api.deepseek.com'
