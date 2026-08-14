@@ -20,20 +20,14 @@ export const inject = ['slots', 'locale']
 export function apply(ctx: ClientContext): void {
   injectPluginCss()
 
-  // 成本显示币种（本地定制）：先恢复本浏览器记住的选择，再拉取宿主配置默认值。
   initDisplayMeta()
 
-  // 活动语言：初始取平台快照（含宿主设置与浏览器推导），此后随快照切换。
-  // 注意：locale.subscribe 的监听器无参调用（publish 里 fn()），需自行重读快照。
   const syncLocale = (): void => {
     setUiLocale(ctx.locale.getLocale().active === 'en' ? 'en' : 'zh')
   }
   syncLocale()
   ctx.effect(() => ctx.locale.subscribe(syncLocale), 'dsh-usage-chart: locale subscription')
 
-  // 槽位注册：经 slots.inject 等待父条目（ui-conversation）的 children 表
-  // 声明 'conversation.composer.dock' 后再注册。直接 register 依赖加载顺序，
-  // 其他插件改变应用顺序时会在启动时抛「slot is not declared」。
   ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register(
     {
       name: 'conversation.composer.dock',

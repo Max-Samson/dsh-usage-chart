@@ -61,7 +61,6 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
   const occupancy = occupancyPercent(pressure)
   const cacheHit = cacheHitPercent(totals)
   const hasTokens = billedInputTokens(totals) > 0 || totals.outputTokens > 0
-  // 价格说明：CNY 模式下显示换算后的刊例价与所用汇率。
   const currencySuffix = currency === 'cny' ? `CNY（1 USD ≈ ${cnyPerUsd} CNY）` : 'USD'
 
   const onRefreshRate = async (): Promise<void> => {

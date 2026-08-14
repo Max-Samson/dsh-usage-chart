@@ -99,30 +99,24 @@ export function formatUsd(usd: number): string {
   return `$${usd.toFixed(2)}`
 }
 
-/** 成本显示币种（本地定制）：'usd' 官方刊例价原币，'cny' 按汇率换算显示。 */
 export type DisplayCurrency = 'usd' | 'cny'
 
-/** 默认美元 → 人民币汇率（本地定制；可用 config.cnyPerUsd 覆盖）。 */
 export const DEFAULT_CNY_PER_USD = 6.76
 
-/** 规范化显示币种配置。 */
 export function normalizeCurrency(value: string | undefined): DisplayCurrency {
   return value === 'cny' ? 'cny' : 'usd'
 }
 
-/** 规范化汇率配置：必须为正的有限数值，否则回退默认值。 */
 export function normalizeCnyPerUsd(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
     ? value
     : DEFAULT_CNY_PER_USD
 }
 
-/** 把 USD 成本换算为目标显示币种的金额。 */
 export function toDisplayAmount(usd: number, currency: DisplayCurrency, cnyPerUsd: number): number {
   return currency === 'cny' ? usd * cnyPerUsd : usd
 }
 
-/** 按显示币种格式化金额：CNY 用 ¥，USD 用 $（精度规则与 formatUsd 一致）。 */
 export function formatMoney(usd: number, currency: DisplayCurrency, cnyPerUsd: number): string {
   const amount = toDisplayAmount(usd, currency, cnyPerUsd)
   const symbol = currency === 'cny' ? '¥' : '$'
@@ -132,7 +126,6 @@ export function formatMoney(usd: number, currency: DisplayCurrency, cnyPerUsd: n
   return `${symbol}${amount.toFixed(2)}`
 }
 
-/** 刊例价（USD / 1M）换算为目标币种后的数字文本（用于价格说明）。 */
 export function formatPricePerM(usd: number, currency: DisplayCurrency, cnyPerUsd: number): string {
   const amount = toDisplayAmount(usd, currency, cnyPerUsd)
   if (currency === 'usd') return String(usd)

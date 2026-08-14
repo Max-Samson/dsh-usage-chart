@@ -31,10 +31,6 @@ export interface SlotRegisterOptions {
 /** ui-slots 的 SlotRegistry 服务（register 返回卸载函数）。 */
 export interface SlotRegistry {
   register(options: SlotRegisterOptions, component: unknown): () => void
-  /**
-   * 等待槽位声明后再执行注册回调：已声明时同步运行；未声明时在声明提交后运行，
-   * 声明坍塌时释放回调效果、再次声明时重新运行。返回值是幂等的 disposer。
-   */
   inject(key: string, callback: () => (() => void) | void): () => void
 }
 

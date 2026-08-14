@@ -6,8 +6,8 @@
  *    （浏览器直连会被 CORS 拦截，且 API Key 不应暴露给浏览器）。
  *  - `/dsh-usage-chart/usage`   — 读取会话日志（adapter 上报的完整事件流），
  *    折叠出每轮真实 token 用量（与 token-meter 相同的折叠语义）。
- *  - `/dsh-usage-chart/meta`    — 下发成本显示币种与汇率配置（本地定制）。
- *  - `/dsh-usage-chart/rate`    — 代理实时 USD→CNY 汇率查询（本地定制）。
+ *  - `/dsh-usage-chart/meta`    — 下发成本显示币种与汇率配置。
+ *  - `/dsh-usage-chart/rate`    — 代理实时 USD→CNY 汇率查询。
  */
 import type { Context, CredentialsService } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -41,12 +41,11 @@ export interface Config {
   apiKey?: string
   /** 可选：官方 API 基地址。 */
   baseUrl?: string
-  /** 可选（本地定制）：成本显示币种，'usd'（默认）或 'cny'。 */
+  /** 可选：成本显示币种，'usd'（默认）或 'cny'。 */
   currency?: string
-  /** 可选（本地定制）：currency: 'cny' 时的美元兑人民币汇率，默认 6.76。 */
+  /** 可选：currency: 'cny' 时的美元兑人民币汇率，默认 6.76。 */
   cnyPerUsd?: number
-  /** 可选（本地定制）：实时汇率数据源 URL（须返回 `{ rates: { CNY: number } }` 结构），
-   *  默认 open.er-api.com；HTTPS 要求与 baseUrl 相同（回环地址允许 HTTP）。 */
+  /** 可选：实时汇率数据源 URL（须返回 `{ rates: { CNY: number } }` 结构），默认 open.er-api.com。 */
   fxUrl?: string
 }
 
@@ -94,7 +93,6 @@ export interface SessionEventLike {
 
 const DEFAULT_BASE_URL = 'https://api.deepseek.com'
 
-/** 实时汇率默认数据源（返回 { result, rates: { CNY } } 结构）。 */
 const DEFAULT_FX_URL = 'https://open.er-api.com/v6/latest/USD'
 
 /**
@@ -308,10 +306,6 @@ async function fetchBalance(apiKey: string, baseUrl: string): Promise<BalanceRes
   }
 }
 
-/**
- * 拉取实时 USD → CNY 汇率（默认 open.er-api.com，可用 config.fxUrl 覆盖）。
- * 任何失败都返回结构化错误，不抛异常；汇率必须为正的有限数值。
- */
 async function fetchLiveRate(fxUrl: string): Promise<{
   ok: boolean
   rate?: number
@@ -386,7 +380,6 @@ export function apply(ctx: Context, config: Config = {}): void {
   const cnyPerUsd = normalizeCnyPerUsd(config.cnyPerUsd)
   const fxUrl = normalizeBaseUrl(config.fxUrl === undefined || config.fxUrl === '' ? DEFAULT_FX_URL : config.fxUrl)
 
-  // 成本显示币种与汇率（本地定制）：客户端无配置通道，经同源路由下发。
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
     path: '/dsh-usage-chart/meta',
@@ -396,7 +389,6 @@ export function apply(ctx: Context, config: Config = {}): void {
     },
   }), 'dsh-usage-chart: meta route')
 
-  // 实时汇率（本地定制）：浏览器直连汇率源有 CORS 与可靠性问题，经宿主代理。
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
     path: '/dsh-usage-chart/rate',
