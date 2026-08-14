@@ -2,13 +2,19 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  DEFAULT_CNY_PER_USD,
   PRICING,
   apply,
   cacheHitPercent,
   estimateCost,
   foldTurnUsage,
+  formatMoney,
+  formatPricePerM,
   isTrustedRequest,
   normalizeBaseUrl,
+  normalizeCnyPerUsd,
+  normalizeCurrency,
+  toDisplayAmount,
 } from '../lib/index.js'
 
 function responseRecorder() {
@@ -22,7 +28,7 @@ function responseRecorder() {
   }
 }
 
-function mountedRoutes(events = []) {
+function mountedRoutes(events = [], config = {}) {
   const routes = new Map()
   apply({
     effect(setup) { setup() },
@@ -33,7 +39,7 @@ function mountedRoutes(events = []) {
     sessions: {
       get(id) { return id === 'session-test' ? { id, events } : undefined },
     },
-  })
+  }, config)
   return routes
 }
 
@@ -143,4 +149,51 @@ test('balance route reports no-api-key when no key is configured anywhere', asyn
   assert.equal(recorder.status, 200)
   assert.equal(body.apiKeyConfigured, false)
   assert.equal(body.reason, 'no-api-key')
+})
+
+test('display-currency helpers convert and format USD amounts', () => {
+  assert.equal(normalizeCurrency(undefined), 'usd')
+  assert.equal(normalizeCurrency('usd'), 'usd')
+  assert.equal(normalizeCurrency('cny'), 'cny')
+  assert.equal(normalizeCurrency('eur'), 'usd')
+  assert.equal(normalizeCnyPerUsd(undefined), DEFAULT_CNY_PER_USD)
+  assert.equal(normalizeCnyPerUsd(7.1), 7.1)
+  assert.equal(normalizeCnyPerUsd(-1), DEFAULT_CNY_PER_USD)
+  assert.equal(normalizeCnyPerUsd('x'), DEFAULT_CNY_PER_USD)
+
+  assert.equal(toDisplayAmount(0.058, 'usd', 6.76), 0.058)
+  assert.ok(Math.abs(toDisplayAmount(0.058, 'cny', 6.76) - 0.058 * 6.76) < 1e-12)
+
+  assert.equal(formatMoney(0, 'usd', 6.76), '$0')
+  assert.equal(formatMoney(0.058, 'usd', 6.76), '$0.058')
+  assert.equal(formatMoney(0.058, 'cny', 6.76), '¥0.392')
+  assert.equal(formatMoney(1, 'cny', 6.76), '¥6.760')
+  assert.equal(formatMoney(123, 'usd', 6.76), '$123.00')
+
+  assert.equal(formatPricePerM(0.14, 'usd', 6.76), '0.14')
+  assert.equal(formatPricePerM(0.14, 'cny', 6.76), '0.946')
+  assert.equal(formatPricePerM(0.0028, 'cny', 6.76), '0.0189')
+  assert.equal(formatPricePerM(0.28, 'cny', 6.76), '1.893')
+})
+
+test('mounted /dsh-usage-chart/meta route serves display-currency defaults and honors config', async () => {
+  const defaults = mountedRoutes().get('/dsh-usage-chart/meta')
+  const defaultResponse = responseRecorder()
+  await defaults.handler({ method: 'GET', url: '/dsh-usage-chart/meta', headers: { host: 'localhost:3000', origin: 'http://localhost:3000', 'sec-fetch-site': 'same-origin' } }, defaultResponse)
+  assert.equal(defaultResponse.status, 200)
+  assert.deepEqual(JSON.parse(defaultResponse.body), { ok: true, currency: 'usd', cnyPerUsd: DEFAULT_CNY_PER_USD })
+
+  const custom = mountedRoutes([], { currency: 'cny', cnyPerUsd: 7.1 }).get('/dsh-usage-chart/meta')
+  const customResponse = responseRecorder()
+  await custom.handler({ method: 'GET', url: '/dsh-usage-chart/meta', headers: { host: 'localhost:3000', origin: 'http://localhost:3000', 'sec-fetch-site': 'same-origin' } }, customResponse)
+  assert.deepEqual(JSON.parse(customResponse.body), { ok: true, currency: 'cny', cnyPerUsd: 7.1 })
+
+  const invalid = mountedRoutes([], { currency: 'eur', cnyPerUsd: -5 }).get('/dsh-usage-chart/meta')
+  const invalidResponse = responseRecorder()
+  await invalid.handler({ method: 'GET', url: '/dsh-usage-chart/meta', headers: { host: 'localhost:3000', origin: 'http://localhost:3000', 'sec-fetch-site': 'same-origin' } }, invalidResponse)
+  assert.deepEqual(JSON.parse(invalidResponse.body), { ok: true, currency: 'usd', cnyPerUsd: DEFAULT_CNY_PER_USD })
+
+  const methodResponse = responseRecorder()
+  await defaults.handler({ method: 'POST', url: '/dsh-usage-chart/meta', headers: { host: 'localhost:3000' } }, methodResponse)
+  assert.equal(methodResponse.status, 405)
 })

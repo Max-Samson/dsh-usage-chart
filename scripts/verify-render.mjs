@@ -96,8 +96,13 @@ if (indicatorText !== null) {
     console.log('PANEL:', JSON.stringify({ cells, balanceText, barRectCount, legend, notes, chartControls, currentBandCount, currentBandGeometry, errText }, null, 2))
     await page.screenshot({ path: join(artifacts, '2-panel.png') })
 
-    // ── 构成视图 + 悬浮详情（按钮文案随语言变化，按位置取第二个） ──
-    const ratioButton = page.locator('.duc-view-toggle button').nth(1)
+    // ── 构成视图 + 悬浮详情（按钮文案随语言变化，按图表区 aria-label 定位） ──
+    // 面板现有两组 .duc-view-toggle（成本币种 / 图表视图），必须限定在图表组内取第二个按钮。
+    const ratioButton = page
+      .locator('.duc-view-toggle[aria-label="图表显示方式"], .duc-view-toggle[aria-label="Chart display"]')
+      .first()
+      .locator('button')
+      .nth(1)
     if (await ratioButton.count()) {
       await ratioButton.click()
       const ratioHeights = await page.$$eval('.duc-chart-turn', (groups) => groups.map((group) => {

@@ -7,8 +7,9 @@
  */
 import { useMemo, useState } from 'react'
 import type { TokenUsageBuckets } from '../pricing.ts'
-import { billedInputTokens, cacheHitPercent, estimateCost, formatTokens, formatUsd, pricingFor } from '../pricing.ts'
+import { billedInputTokens, cacheHitPercent, estimateCost, formatMoney, formatPricePerM, formatTokens, pricingFor } from '../pricing.ts'
 import { currencySymbol, type BalanceData, type BalanceStatus } from './balance.ts'
+import { setDisplayCurrency, useDisplayCurrency } from './currency.ts'
 import { HStack, Legend, SEGMENT_COLORS, tokenLegend, TurnBars, type TurnChartMode, type TurnUsage } from './charts.tsx'
 import { getUiCopy, type UiLocale } from './i18n.ts'
 import { useSessionUsage } from './usage-api.ts'
@@ -46,6 +47,7 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
     balanceStatus: status, balanceData: data, loadBalance: load,
   } = props
   const copy = getUiCopy(locale)
+  const { currency, cnyPerUsd } = useDisplayCurrency()
 
   const usage = useSessionUsage(sessionId)
 
@@ -58,6 +60,8 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
   const occupancy = occupancyPercent(pressure)
   const cacheHit = cacheHitPercent(totals)
   const hasTokens = billedInputTokens(totals) > 0 || totals.outputTokens > 0
+  // 价格说明：CNY 模式下显示换算后的刊例价与所用汇率。
+  const currencySuffix = currency === 'cny' ? `CNY（1 USD ≈ ${cnyPerUsd} CNY）` : 'USD'
 
   const balance = data?.balances?.[0]
 
@@ -103,11 +107,27 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
       <section className="duc-section">
         <div className="duc-section-head">
           <h4>{copy.costEstimate}</h4>
-          <strong className="duc-section-value">≈ {formatUsd(cost.usd)}</strong>
+          <div className="duc-chart-actions">
+            <div className="duc-view-toggle" role="group" aria-label={copy.currencyToggleLabel}>
+              <button
+                type="button"
+                title={copy.currencyToggleUsdTitle}
+                aria-pressed={currency === 'usd'}
+                onClick={() => setDisplayCurrency('usd')}
+              >$ USD</button>
+              <button
+                type="button"
+                title={copy.currencyToggleCnyTitle}
+                aria-pressed={currency === 'cny'}
+                onClick={() => setDisplayCurrency('cny')}
+              >¥ CNY</button>
+            </div>
+            <strong className="duc-section-value">≈ {formatMoney(cost.usd, currency, cnyPerUsd)}</strong>
+          </div>
         </div>
         <div className="duc-cost-split">
-          <span><i style={{ background: SEGMENT_COLORS.miss }} />{copy.inputCost} <b>{formatUsd(inputCost)}</b></span>
-          <span><i style={{ background: SEGMENT_COLORS.output }} />{copy.outputCost} <b>{formatUsd(outputCost)}</b></span>
+          <span><i style={{ background: SEGMENT_COLORS.miss }} />{copy.inputCost} <b>{formatMoney(inputCost, currency, cnyPerUsd)}</b></span>
+          <span><i style={{ background: SEGMENT_COLORS.output }} />{copy.outputCost} <b>{formatMoney(outputCost, currency, cnyPerUsd)}</b></span>
         </div>
         <HStack
           segments={[
@@ -115,7 +135,12 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
             { label: copy.outputCost, value: outputCost, color: SEGMENT_COLORS.output },
           ]}
         />
-        <div className="duc-note">{copy.pricingNote(pricing.pricing.cacheMissInput, pricing.pricing.cacheHitInput, pricing.pricing.output)}</div>
+        <div className="duc-note">{copy.pricingNote(
+          formatPricePerM(pricing.pricing.cacheMissInput, currency, cnyPerUsd),
+          formatPricePerM(pricing.pricing.cacheHitInput, currency, cnyPerUsd),
+          formatPricePerM(pricing.pricing.output, currency, cnyPerUsd),
+          currencySuffix,
+        )}</div>
       </section>
 
       <section className="duc-section">

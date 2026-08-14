@@ -8,6 +8,7 @@
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import { UsageIndicator } from './UsageIndicator.tsx'
+import { initDisplayMeta } from './currency.ts'
 import { injectPluginCss } from './styles.ts'
 import { setUiLocale } from './i18n.ts'
 
@@ -18,6 +19,9 @@ export const inject = ['slots', 'locale']
 
 export function apply(ctx: ClientContext): void {
   injectPluginCss()
+
+  // 成本显示币种（本地定制）：先恢复本浏览器记住的选择，再拉取宿主配置默认值。
+  initDisplayMeta()
 
   // 活动语言：初始取平台快照（含宿主设置与浏览器推导），此后随快照切换。
   // 注意：locale.subscribe 的监听器无参调用（publish 里 fn()），需自行重读快照。

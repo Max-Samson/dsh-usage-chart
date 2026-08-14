@@ -1,26 +1,34 @@
 /**
  * 宿主（Node）半区：dsh-usage-chart
  *
- * 在同源 HTTP 服务上注册两个路由：
+ * 在同源 HTTP 服务上注册三个路由：
  *  - `/dsh-usage-chart/balance` — 代理 DeepSeek 官方 `GET /user/balance`
  *    （浏览器直连会被 CORS 拦截，且 API Key 不应暴露给浏览器）。
  *  - `/dsh-usage-chart/usage`   — 读取会话日志（adapter 上报的完整事件流），
  *    折叠出每轮真实 token 用量（与 token-meter 相同的折叠语义）。
+ *  - `/dsh-usage-chart/meta`    — 下发成本显示币种与汇率配置（本地定制）。
  */
 import type { Context, CredentialsService } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { normalizeCnyPerUsd, normalizeCurrency } from './pricing.ts'
 
 export {
+  DEFAULT_CNY_PER_USD,
   PRICING,
   ZERO_BUCKETS,
   billedInputTokens,
   cacheHitPercent,
   estimateCost,
+  formatMoney,
+  formatPricePerM,
   formatTokens,
   formatUsd,
+  normalizeCnyPerUsd,
+  normalizeCurrency,
   pricingFor,
+  toDisplayAmount,
 } from './pricing.ts'
-export type { ModelPricing, TokenUsageBuckets } from './pricing.ts'
+export type { DisplayCurrency, ModelPricing, TokenUsageBuckets } from './pricing.ts'
 
 export const name = 'dsh-usage-chart'
 
@@ -32,6 +40,10 @@ export interface Config {
   apiKey?: string
   /** 可选：官方 API 基地址。 */
   baseUrl?: string
+  /** 可选（本地定制）：成本显示币种，'usd'（默认）或 'cny'。 */
+  currency?: string
+  /** 可选（本地定制）：currency: 'cny' 时的美元兑人民币汇率，默认 6.76。 */
+  cnyPerUsd?: number
 }
 
 interface BalanceInfo {
@@ -316,6 +328,18 @@ export function apply(ctx: Context, config: Config = {}): void {
     return (process.env.DEEPSEEK_API_KEY ?? '').trim()
   }
   const baseUrl = normalizeBaseUrl(config.baseUrl)
+  const currency = normalizeCurrency(config.currency)
+  const cnyPerUsd = normalizeCnyPerUsd(config.cnyPerUsd)
+
+  // 成本显示币种与汇率（本地定制）：客户端无配置通道，经同源路由下发。
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'exact',
+    path: '/dsh-usage-chart/meta',
+    async handler(req: IncomingMessage, res: ServerResponse) {
+      if (!guardRequest(req, res)) return
+      writeJson(res, 200, { ok: true, currency, cnyPerUsd })
+    },
+  }), 'dsh-usage-chart: meta route')
 
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',

@@ -16,6 +16,22 @@ All notable changes to this project are documented here. The format follows [Kee
   the peer is now marked optional).
 - Docs: document uninstall/cleanup steps in the README.
 
+### Added
+
+- Cost display currency: `config.currency` (`'usd'` default, `'cny'`) and `config.cnyPerUsd`
+  exchange rate (default `6.76`); costs convert at the configured rate and render with `¥`.
+- A USD/CNY toggle in the cost-estimate section: switching updates every cost figure in the
+  indicator and dashboard immediately, and the choice is remembered in the browser
+  (`localStorage`), overriding the config default.
+- `/dsh-usage-chart/meta` host route that serves the display-currency config to the client.
+
+### Changed
+
+- The per-model price note follows the display currency and notes the applied exchange rate
+  (e.g. `CNY（1 USD ≈ 6.76 CNY）`).
+- Visual probe scripts now scope the chart-mode toggle to the round-usage section, since the
+  panel contains a second `duc-view-toggle` group (currency) ahead of it.
+
 ## [0.1.0] - 2026-08-14
 
 ### Added
