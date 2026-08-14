@@ -43,6 +43,11 @@ export interface UiCopy {
   currencyToggleLabel: string
   currencyToggleUsdTitle: string
   currencyToggleCnyTitle: string
+  refreshRate: string
+  refreshingRate: string
+  refreshRateTitle: string
+  rateLive: (rate: number, time: string) => string
+  rateError: (rate: number) => string
   toppedUp: string
   granted: string
   noApiKey: string
@@ -81,6 +86,9 @@ const COPY: Record<UiLocale, UiCopy> = {
     accountBalance: '账户余额', loadingBalance: '正在查询账户余额', balanceEnough: '余额充足', balanceLow: '余额不足',
     currency: '币种', currencyToggleLabel: '成本显示币种',
     currencyToggleUsdTitle: '成本按美元（USD）显示，选择会在本浏览器中记住', currencyToggleCnyTitle: '成本按人民币（CNY）显示，选择会在本浏览器中记住',
+    refreshRate: '刷新汇率', refreshingRate: '获取中…', refreshRateTitle: '获取最新汇率并重新估算（本次会话有效）',
+    rateLive: (rate, time) => `实时汇率已更新：1 USD = ${rate} CNY（${time} 获取，本次会话有效）`,
+    rateError: (rate) => `实时汇率获取失败，沿用 1 USD = ${rate} CNY。`,
     toppedUp: '充值', granted: '赠送', noApiKey: '未配置 DEEPSEEK_API_KEY（或插件 config.apiKey），无法查询余额。',
     balanceError: (message) => `余额查询失败：${message}`, unknown: '未知错误', retry: '重试', balanceIdle: '点击输入框下方的余额信息即可查询。',
     historySource: (truncated) => `来自会话日志，完整历史${truncated ? '，图表显示最近 12 轮' : ''}`,
@@ -105,6 +113,9 @@ const COPY: Record<UiLocale, UiCopy> = {
     accountBalance: 'Account balance', loadingBalance: 'Loading account balance', balanceEnough: 'Available', balanceLow: 'Insufficient',
     currency: 'Currency', currencyToggleLabel: 'Cost display currency',
     currencyToggleUsdTitle: 'Show cost in USD; remembered in this browser', currencyToggleCnyTitle: 'Show cost in CNY; remembered in this browser',
+    refreshRate: 'Refresh rate', refreshingRate: 'Fetching…', refreshRateTitle: 'Fetch the latest exchange rate and re-estimate (valid for this session)',
+    rateLive: (rate, time) => `Live rate updated: 1 USD = ${rate} CNY (fetched at ${time}, valid for this session)`,
+    rateError: (rate) => `Could not fetch the live rate; keeping 1 USD = ${rate} CNY.`,
     toppedUp: 'Topped up', granted: 'Granted', noApiKey: 'DEEPSEEK_API_KEY (or plugin config.apiKey) is not configured, so the balance cannot be queried.',
     balanceError: (message) => `Balance query failed: ${message}`, unknown: 'Unknown error', retry: 'Retry', balanceIdle: 'Select the balance below the composer to query it.',
     historySource: (truncated) => `Full history from the session log${truncated ? '; showing the latest 12 rounds' : ''}`,

@@ -9,7 +9,7 @@ import { useMemo, useState } from 'react'
 import type { TokenUsageBuckets } from '../pricing.ts'
 import { billedInputTokens, cacheHitPercent, estimateCost, formatMoney, formatPricePerM, formatTokens, pricingFor } from '../pricing.ts'
 import { currencySymbol, type BalanceData, type BalanceStatus } from './balance.ts'
-import { setDisplayCurrency, useDisplayCurrency } from './currency.ts'
+import { refreshLiveRate, setDisplayCurrency, useDisplayCurrency } from './currency.ts'
 import { HStack, Legend, SEGMENT_COLORS, tokenLegend, TurnBars, type TurnChartMode, type TurnUsage } from './charts.tsx'
 import { getUiCopy, type UiLocale } from './i18n.ts'
 import { useSessionUsage } from './usage-api.ts'
@@ -42,12 +42,13 @@ function occupancyPercent(pressure: ContextPressureView | undefined): number | n
 
 export function UsagePanel(props: UsagePanelProps): JSX.Element {
   const [chartMode, setChartMode] = useState<TurnChartMode>('absolute')
+  const [rateStatus, setRateStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
   const {
     sessionId, locale, totals, model, observedTurns, pressure,
     balanceStatus: status, balanceData: data, loadBalance: load,
   } = props
   const copy = getUiCopy(locale)
-  const { currency, cnyPerUsd } = useDisplayCurrency()
+  const { currency, cnyPerUsd, rateFetchedAt } = useDisplayCurrency()
 
   const usage = useSessionUsage(sessionId)
 
@@ -62,6 +63,12 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
   const hasTokens = billedInputTokens(totals) > 0 || totals.outputTokens > 0
   // 价格说明：CNY 模式下显示换算后的刊例价与所用汇率。
   const currencySuffix = currency === 'cny' ? `CNY（1 USD ≈ ${cnyPerUsd} CNY）` : 'USD'
+
+  const onRefreshRate = async (): Promise<void> => {
+    setRateStatus('loading')
+    const result = await refreshLiveRate()
+    setRateStatus(result === 'ok' ? 'ok' : 'error')
+  }
 
   const balance = data?.balances?.[0]
 
@@ -122,6 +129,13 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
                 onClick={() => setDisplayCurrency('cny')}
               >¥ CNY</button>
             </div>
+            <button
+              type="button"
+              className="duc-refresh"
+              disabled={rateStatus === 'loading'}
+              title={copy.refreshRateTitle}
+              onClick={() => void onRefreshRate()}
+            >{rateStatus === 'loading' ? copy.refreshingRate : copy.refreshRate}</button>
             <strong className="duc-section-value">≈ {formatMoney(cost.usd, currency, cnyPerUsd)}</strong>
           </div>
         </div>
@@ -141,6 +155,11 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
           formatPricePerM(pricing.pricing.output, currency, cnyPerUsd),
           currencySuffix,
         )}</div>
+        {currency === 'cny' && rateStatus !== 'idle' && (
+          <div className="duc-note">{rateStatus === 'ok'
+            ? copy.rateLive(cnyPerUsd, new Date(rateFetchedAt ?? Date.now()).toLocaleTimeString())
+            : copy.rateError(cnyPerUsd)}</div>
+        )}
       </section>
 
       <section className="duc-section">

@@ -197,3 +197,47 @@ test('mounted /dsh-usage-chart/meta route serves display-currency defaults and h
   await defaults.handler({ method: 'POST', url: '/dsh-usage-chart/meta', headers: { host: 'localhost:3000' } }, methodResponse)
   assert.equal(methodResponse.status, 405)
 })
+
+test('mounted /dsh-usage-chart/rate route parses the FX source and reports failures', async () => {
+  const originalFetch = globalThis.fetch
+  const route = mountedRoutes().get('/dsh-usage-chart/rate')
+  const sameOrigin = { host: 'localhost:3000', origin: 'http://localhost:3000', 'sec-fetch-site': 'same-origin' }
+  try {
+    globalThis.fetch = async () => ({ ok: true, json: async () => ({ result: 'success', rates: { CNY: 6.77 } }) })
+    const okResponse = responseRecorder()
+    await route.handler({ method: 'GET', url: '/dsh-usage-chart/rate', headers: { ...sameOrigin } }, okResponse)
+    assert.equal(okResponse.status, 200)
+    const okBody = JSON.parse(okResponse.body)
+    assert.equal(okBody.ok, true)
+    assert.equal(okBody.rate, 6.77)
+    assert.equal(typeof okBody.fetchedAt, 'number')
+
+    globalThis.fetch = async () => ({ ok: true, json: async () => ({ rates: {} }) })
+    const badResponse = responseRecorder()
+    await route.handler({ method: 'GET', url: '/dsh-usage-chart/rate', headers: { ...sameOrigin } }, badResponse)
+    const badBody = JSON.parse(badResponse.body)
+    assert.equal(badBody.ok, false)
+    assert.equal(badBody.reason, 'bad-response')
+
+    globalThis.fetch = async () => ({ ok: true, json: async () => ({ rates: { CNY: -1 } }) })
+    const negativeResponse = responseRecorder()
+    await route.handler({ method: 'GET', url: '/dsh-usage-chart/rate', headers: { ...sameOrigin } }, negativeResponse)
+    assert.equal(JSON.parse(negativeResponse.body).reason, 'bad-response')
+
+    globalThis.fetch = async () => ({ ok: false, json: async () => ({}) })
+    const httpResponse = responseRecorder()
+    await route.handler({ method: 'GET', url: '/dsh-usage-chart/rate', headers: { ...sameOrigin } }, httpResponse)
+    assert.equal(JSON.parse(httpResponse.body).reason, 'request-failed')
+
+    globalThis.fetch = async () => { throw new Error('network down') }
+    const throwResponse = responseRecorder()
+    await route.handler({ method: 'GET', url: '/dsh-usage-chart/rate', headers: { ...sameOrigin } }, throwResponse)
+    assert.equal(JSON.parse(throwResponse.body).reason, 'request-failed')
+
+    const methodResponse = responseRecorder()
+    await route.handler({ method: 'POST', url: '/dsh-usage-chart/rate', headers: { host: 'localhost:3000' } }, methodResponse)
+    assert.equal(methodResponse.status, 405)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})

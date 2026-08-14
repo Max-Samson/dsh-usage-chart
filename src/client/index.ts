@@ -31,7 +31,10 @@ export function apply(ctx: ClientContext): void {
   syncLocale()
   ctx.effect(() => ctx.locale.subscribe(syncLocale), 'dsh-usage-chart: locale subscription')
 
-  ctx.slots.register(
+  // 槽位注册：经 slots.inject 等待父条目（ui-conversation）的 children 表
+  // 声明 'conversation.composer.dock' 后再注册。直接 register 依赖加载顺序，
+  // 其他插件改变应用顺序时会在启动时抛「slot is not declared」。
+  ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register(
     {
       name: 'conversation.composer.dock',
       id: 'dsh-usage-chart',
@@ -39,5 +42,5 @@ export function apply(ctx: ClientContext): void {
       registrant: 'dsh-usage-chart',
     },
     UsageIndicator,
-  )
+  ))
 }

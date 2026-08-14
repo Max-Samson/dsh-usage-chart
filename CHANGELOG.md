@@ -16,6 +16,8 @@ All notable changes to this project are documented here. The format follows [Kee
   the peer is now marked optional).
 - Docs: document uninstall/cleanup steps in the README.
 
+## [Unreleased]
+
 ### Added
 
 - Cost display currency: `config.currency` (`'usd'` default, `'cny'`) and `config.cnyPerUsd`
@@ -23,6 +25,10 @@ All notable changes to this project are documented here. The format follows [Kee
 - A USD/CNY toggle in the cost-estimate section: switching updates every cost figure in the
   indicator and dashboard immediately, and the choice is remembered in the browser
   (`localStorage`), overriding the config default.
+- A rate-refresh control in the cost-estimate section: it fetches the latest USD→CNY rate
+  through a new same-origin host proxy route (`/dsh-usage-chart/rate`; source configurable
+  via `config.fxUrl`, default open.er-api.com), re-estimates CNY costs immediately, and
+  reports the fetch time; failures keep the previous rate and are reported inline.
 - `/dsh-usage-chart/meta` host route that serves the display-currency config to the client.
 
 ### Changed
@@ -31,6 +37,13 @@ All notable changes to this project are documented here. The format follows [Kee
   (e.g. `CNY（1 USD ≈ 6.76 CNY）`).
 - Visual probe scripts now scope the chart-mode toggle to the round-usage section, since the
   panel contains a second `duc-view-toggle` group (currency) ahead of it.
+
+### Fixed
+
+- Client slot registration now waits for the `conversation.composer.dock` declaration via
+  `ctx.slots.inject` instead of registering directly. The direct call depends on loader
+  application order and throws `slot "…" is not declared` at boot once other plugins change
+  that order.
 
 ## [0.1.0] - 2026-08-14
 

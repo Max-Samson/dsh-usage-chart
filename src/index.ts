@@ -1,12 +1,13 @@
 /**
  * 宿主（Node）半区：dsh-usage-chart
  *
- * 在同源 HTTP 服务上注册三个路由：
+ * 在同源 HTTP 服务上注册四个路由：
  *  - `/dsh-usage-chart/balance` — 代理 DeepSeek 官方 `GET /user/balance`
  *    （浏览器直连会被 CORS 拦截，且 API Key 不应暴露给浏览器）。
  *  - `/dsh-usage-chart/usage`   — 读取会话日志（adapter 上报的完整事件流），
  *    折叠出每轮真实 token 用量（与 token-meter 相同的折叠语义）。
  *  - `/dsh-usage-chart/meta`    — 下发成本显示币种与汇率配置（本地定制）。
+ *  - `/dsh-usage-chart/rate`    — 代理实时 USD→CNY 汇率查询（本地定制）。
  */
 import type { Context, CredentialsService } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -44,6 +45,9 @@ export interface Config {
   currency?: string
   /** 可选（本地定制）：currency: 'cny' 时的美元兑人民币汇率，默认 6.76。 */
   cnyPerUsd?: number
+  /** 可选（本地定制）：实时汇率数据源 URL（须返回 `{ rates: { CNY: number } }` 结构），
+   *  默认 open.er-api.com；HTTPS 要求与 baseUrl 相同（回环地址允许 HTTP）。 */
+  fxUrl?: string
 }
 
 interface BalanceInfo {
@@ -89,6 +93,9 @@ export interface SessionEventLike {
 }
 
 const DEFAULT_BASE_URL = 'https://api.deepseek.com'
+
+/** 实时汇率默认数据源（返回 { result, rates: { CNY } } 结构）。 */
+const DEFAULT_FX_URL = 'https://open.er-api.com/v6/latest/USD'
 
 /**
  * Normalize and validate the upstream API URL.
@@ -302,6 +309,53 @@ async function fetchBalance(apiKey: string, baseUrl: string): Promise<BalanceRes
 }
 
 /**
+ * 拉取实时 USD → CNY 汇率（默认 open.er-api.com，可用 config.fxUrl 覆盖）。
+ * 任何失败都返回结构化错误，不抛异常；汇率必须为正的有限数值。
+ */
+async function fetchLiveRate(fxUrl: string): Promise<{
+  ok: boolean
+  rate?: number
+  fetchedAt?: number
+  reason?: 'request-failed' | 'bad-response'
+  message?: string
+}> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 8_000)
+  try {
+    const res = await fetch(fxUrl, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    })
+    if (!res.ok) {
+      return {
+        ok: false,
+        reason: 'request-failed',
+        message: `汇率源返回 HTTP ${res.status}`,
+      }
+    }
+    const data = (await res.json()) as { rates?: { CNY?: unknown } }
+    const rate = data.rates?.CNY
+    if (typeof rate !== 'number' || !Number.isFinite(rate) || rate <= 0) {
+      return {
+        ok: false,
+        reason: 'bad-response',
+        message: '汇率源未返回有效的 rates.CNY',
+      }
+    }
+    return { ok: true, rate, fetchedAt: Date.now() }
+  } catch (error) {
+    return {
+      ok: false,
+      reason: 'request-failed',
+      message: error instanceof Error ? error.message : String(error),
+    }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
  * 插件入口：注册余额代理路由。
  * @param ctx - 宿主 Context（cordis）。
  * @param config - 行配置（cordis.patch.yml 的 config）。
@@ -330,6 +384,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   const baseUrl = normalizeBaseUrl(config.baseUrl)
   const currency = normalizeCurrency(config.currency)
   const cnyPerUsd = normalizeCnyPerUsd(config.cnyPerUsd)
+  const fxUrl = normalizeBaseUrl(config.fxUrl === undefined || config.fxUrl === '' ? DEFAULT_FX_URL : config.fxUrl)
 
   // 成本显示币种与汇率（本地定制）：客户端无配置通道，经同源路由下发。
   ctx.effect(() => ctx.webServer.register({
@@ -340,6 +395,17 @@ export function apply(ctx: Context, config: Config = {}): void {
       writeJson(res, 200, { ok: true, currency, cnyPerUsd })
     },
   }), 'dsh-usage-chart: meta route')
+
+  // 实时汇率（本地定制）：浏览器直连汇率源有 CORS 与可靠性问题，经宿主代理。
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'exact',
+    path: '/dsh-usage-chart/rate',
+    async handler(req: IncomingMessage, res: ServerResponse) {
+      if (!guardRequest(req, res)) return
+      const result = await fetchLiveRate(fxUrl)
+      writeJson(res, 200, result)
+    },
+  }), 'dsh-usage-chart: rate route')
 
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',

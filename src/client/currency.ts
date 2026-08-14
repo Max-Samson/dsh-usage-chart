@@ -4,6 +4,8 @@
  *    作为默认值（无用户选择时生效）；
  *  - 用户可在用量面板中切换 USD/CNY，选择写入 localStorage
  *    （`dsh-usage-chart:currency`），在本浏览器中记住并覆盖配置默认值；
+ *  - 「刷新汇率」经宿主 `/dsh-usage-chart/rate` 拉取实时汇率，覆盖当前汇率
+ *    并在本次会话内生效（不落盘，避免陈旧汇率被长期记住）；
  *  - 组件经 useDisplayCurrency() 读取，切换后全界面实时更新。
  */
 import { useSyncExternalStore } from 'react'
@@ -12,13 +14,19 @@ import { DEFAULT_CNY_PER_USD, type DisplayCurrency } from '../pricing.ts'
 export interface DisplayMeta {
   currency: DisplayCurrency
   cnyPerUsd: number
+  /** 汇率来源：'config'（配置默认）或 'live'（本次会话内刷新所得）。 */
+  rateSource?: 'config' | 'live'
+  /** 实时汇率获取时间（epoch ms；仅 rateSource === 'live' 时有意义）。 */
+  rateFetchedAt?: number
 }
 
+export type RateRefreshResult = 'ok' | 'request-failed' | 'bad-response'
+
 const STORAGE_KEY = 'dsh-usage-chart:currency'
-const DEFAULT_META: DisplayMeta = { currency: 'usd', cnyPerUsd: DEFAULT_CNY_PER_USD }
+const DEFAULT_META: DisplayMeta = { currency: 'usd', cnyPerUsd: DEFAULT_CNY_PER_USD, rateSource: 'config' }
 
 let meta: DisplayMeta = DEFAULT_META
-/** 用户是否已在界面中手动选择过（此后 meta 拉取不再覆盖）。 */
+/** 用户是否已在界面中手动选择过（此后 meta 拉取不再覆盖币种）。 */
 let userChosen = false
 const listeners = new Set<() => void>()
 
@@ -86,19 +94,44 @@ export async function fetchDisplayMeta(): Promise<void> {
         ? body.cnyPerUsd
         : DEFAULT_CNY_PER_USD
     if (userChosen) {
-      // 只更新汇率，币种保留用户选择。
-      if (meta.cnyPerUsd !== cnyPerUsd) {
+      // 只更新汇率，币种保留用户选择；实时汇率（本会话内刷新）优先于配置默认。
+      if (meta.cnyPerUsd !== cnyPerUsd && meta.rateSource !== 'live') {
         meta = { ...meta, cnyPerUsd }
         notify()
       }
       return
     }
-    if (meta.currency !== currency || meta.cnyPerUsd !== cnyPerUsd) {
+    if ((meta.currency !== currency || meta.cnyPerUsd !== cnyPerUsd) && meta.rateSource !== 'live') {
       meta = { currency, cnyPerUsd }
       notify()
     }
   } catch {
     // 忽略：保持默认（usd）。
+  }
+}
+
+/**
+ * 应用实时汇率：覆盖当前汇率并标注来源与获取时间。
+ * 仅在本次会话内生效（不写 localStorage，避免陈旧汇率被长期记住）。
+ */
+export function setLiveRate(rate: number, fetchedAt: number): void {
+  if (meta.currency === 'cny' && meta.cnyPerUsd === rate && meta.rateSource === 'live' && meta.rateFetchedAt === fetchedAt) return
+  meta = { ...meta, cnyPerUsd: rate, rateSource: 'live', rateFetchedAt: fetchedAt }
+  notify()
+}
+
+/** 经宿主代理拉取实时汇率；成功返回 'ok'，失败返回结构化原因（不改动当前汇率）。 */
+export async function refreshLiveRate(): Promise<RateRefreshResult> {
+  try {
+    const res = await fetch('/dsh-usage-chart/rate', { headers: { Accept: 'application/json' } })
+    const body = (await res.json()) as { ok?: boolean; rate?: unknown; fetchedAt?: unknown; reason?: string }
+    if (body.ok === true && typeof body.rate === 'number' && Number.isFinite(body.rate) && body.rate > 0) {
+      setLiveRate(body.rate, typeof body.fetchedAt === 'number' ? body.fetchedAt : Date.now())
+      return 'ok'
+    }
+    return body.reason === 'bad-response' ? 'bad-response' : 'request-failed'
+  } catch {
+    return 'request-failed'
   }
 }
 
