@@ -60,10 +60,17 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
   const flags = useMemo(() => flagAnomalies(historyRounds ?? []), [historyRounds])
 
   // 成本估算：价格唯一输入是 /pricing 快照（ADR 2）；快照不可用则降级提示。
+  // 模型归因优先 host 折叠（ADR 1 权威基准），快照 provenance 推导仅作回退。
+  const hostModel = useMemo(() => {
+    const list = history.status === 'ok' ? history.rounds : []
+    const last = list.length > 0 ? list[list.length - 1] : null
+    return last?.model ?? null
+  }, [history.status, history.rounds])
+  const effectiveModel = hostModel ?? model ?? undefined
   const costView = useMemo(() => {
     if (pricing.table === null) return null
-    return resolvePricing(pricing.table, model)
-  }, [pricing.table, model])
+    return resolvePricing(pricing.table, effectiveModel)
+  }, [pricing.table, effectiveModel])
   const costSplitTotal = useMemo(() => costView === null ? null : costSplit(totals, costView.pricing), [costView, totals])
   const occupancy = occupancyPercent(pressure)
   const cacheHit = cacheHitPercent(totals)
@@ -91,7 +98,7 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
       <section className="duc-section">
         <div className="duc-section-head">
           <h4>{copy.sessionUsage}</h4>
-          {model !== undefined && <span className="duc-section-meta">{model.replace(/^deepseek-/, '')}</span>}
+          {effectiveModel !== undefined && <span className="duc-section-meta">{effectiveModel.replace(/^deepseek-/, '')}</span>}
         </div>
         {hasTokens ? (
           <>
@@ -143,7 +150,7 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
                 sourceText,
                 verifiedText,
               )}
-              {!costView.known && model !== undefined && (
+              {!costView.known && effectiveModel !== undefined && (
                 <><span className="duc-unknown-chip">{copy.unknownModel}</span> {model}</>
               )}
             </div>
