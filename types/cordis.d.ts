@@ -33,6 +33,14 @@ export interface SlotRegistry {
   register(options: SlotRegisterOptions, component: unknown): () => void
 }
 
+/** dsh-client-locale 的 locale 服务（本插件用到的面：订阅活动语言）。 */
+export interface LocaleService {
+  /** 当前语言快照（active = 'zh' | 'en'；语言切换或字典注册都会通知订阅者）。 */
+  getLocale(): { active: string; locales: readonly { id: string }[]; revision: number }
+  /** 订阅快照变化（监听器无参调用，自行重读 getLocale；返回退订函数）。 */
+  subscribe(listener: () => void): () => void
+}
+
 /** 会话日志事件的最小形状（assistant/chunk 与 assistant/message 携带 turn/step/usage）。 */
 export interface SessionEventLike {
   type: string
@@ -53,12 +61,13 @@ export interface SessionStoreService {
   list(): { id: string; events: readonly SessionEventLike[] }[]
 }
 
-/** cordis Context（本插件用到的面：effect + webServer + slots + sessions；均因 inject 声明而保证存在）。 */
+/** cordis Context（本插件用到的面：effect + webServer + slots + sessions + locale；均因 inject 声明而保证存在）。 */
 export interface Context {
   /** 注册一个资源释放器，插件卸载时执行。 */
   effect(disposer: () => (() => void) | void, label?: string): void
   webServer: WebServer
   slots: SlotRegistry
   sessions: SessionStoreService
+  locale: LocaleService
   [key: string]: unknown
 }
