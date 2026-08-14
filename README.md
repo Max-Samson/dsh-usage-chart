@@ -155,6 +155,8 @@ node scripts/verify-render.mjs # 完整渲染验证（含明暗主题、中英�
 
 ## 维护者发布
 
+首次发布需要先在本地完成 npm 的账户验证并执行 `npm publish --access public`；包在 npm 上创建成功后，再为仓库配置 Trusted Publisher。之后创建 GitHub Release 即会由工作流发布新版本。工作流会检测版本是否已存在，因此补建 `v0.1.0` Release 时不会重复发布。
+
 1. 确认 `package.json` 与 `CHANGELOG.md` 版本一致并执行 `npm run verify`。
 2. 创建 `v<version>` GitHub Release。
 3. `release.yml` 通过 npm Trusted Publishing 发布带 provenance 的预构建包。

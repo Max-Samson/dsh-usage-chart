@@ -104,6 +104,10 @@ The package contains two DSH halves: `lib/index.js` for the Node Host and `lib/c
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull request. Please report vulnerabilities privately as described in [SECURITY.md](./SECURITY.md).
 
+## Maintainer releases
+
+For the first release, complete npm account verification and run `npm publish --access public` locally. Once the package exists on npm, configure Trusted Publishing for this repository. Subsequent GitHub Releases publish new versions through the workflow. The workflow skips versions that already exist, so creating the initial `v0.1.0` Release will not publish it twice.
+
 ## Compatibility
 
 | Component | Supported |
