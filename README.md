@@ -2,18 +2,36 @@
 
 > DeepSeek 用量 / 成本 / 余额仪表盘 · DSH Web 插件
 
+[![npm version](https://img.shields.io/npm/v/dsh-usage-chart)](https://www.npmjs.com/package/dsh-usage-chart)
+[![CI](https://img.shields.io/github/actions/workflow/status/Max-Samson/dsh-usage-chart/ci.yml?branch=main)](https://github.com/Max-Samson/dsh-usage-chart/actions)
+[![License](https://img.shields.io/github/license/Max-Samson/dsh-usage-chart)](./LICENSE)
+
+[English](./README_EN.md) · [问题反馈](https://github.com/Max-Samson/dsh-usage-chart/issues)
+
+界面预览：左侧为浅色英文界面，右侧为深色简体中文界面。两者均会跟随 DSH 的主题与语言设置。
+
+<table>
+  <tr>
+    <td width="50%"><img src="./docs/images/usage-panel-demo-en-light.png" alt="浅色主题的英文用量面板演示" /><br /><sub>浅色主题 · English</sub></td>
+    <td width="50%"><img src="./docs/images/usage-panel-demo-zh-dark.png" alt="深色主题的简体中文用量面板演示" /><br /><sub>深色主题 · 简体中文</sub></td>
+  </tr>
+</table>
+
+> 图片仅使用虚构演示数据：不含真实会话内容、Token、成本、余额或 API Key。
+
 在 DeepSeek Harness Web UI 的**输入框下方**实时显示 token 用量、成本估算、模型与账户余额；点击展开**用量可视化图表面板**（参考 DeepSeek 开发者平台的用量页组织方式），全部使用零依赖 SVG 自绘，不引入任何图表库。
 
 ```
-▸ 输入 34.8K · 输出 578 · 缓存 56% · 成本 ≈$0.0042 · v4-flash · 余额 ¥31.13
+▸ 输入 12.4M · 输出 86.2K · 缓存 72% · 成本 ≈$0.042 · demo-model · 余额 --
 ```
 
 点击 ▸ 展开面板：
 
 - **会话用量汇总** — 输入（未命中/命中）、输出、缓存命中率、上下文占用（均来自官方 adapter 上报的 `tokenUsage` / `contextPressure` 投影）
 - **成本估算** — 按官方刊例价（USD/1M tokens）估算，标注「估算，非账单」
-- **每轮用量（本页观测）** — 每轮输入/输出柱状图，按 adapter 每次上报的用量增量实时累积
+- **轮次用量** — 支持“总量 / 构成”视图与悬浮详情；从宿主会话日志折叠完整历史，不可用时回退到本页观测增量
 - **账户余额** — 官方 `GET /user/balance` 接口实时查询（经宿主侧代理，密钥不暴露给浏览器）
+- **中英双语** — 自动跟随 DSH 应用内语言设置，支持运行时切换 `zh` / `en`
 
 ## 特性
 
@@ -26,49 +44,31 @@
 
 ## 技术栈
 
-- **语言**：TypeScript（DSH 插件官方唯一语言——官方文档：*"a plugin is a TypeScript module that exports an `apply` function"*；UI 插件运行在浏览器，Python 无法参与）
+- **语言**：TypeScript 源码，发布为 DSH 可加载的 JavaScript bundle
 - **框架**：[Cordis](https://github.com/cordiverse/cordis) 插件模型 + React 18
 - **构建**：esbuild（host 半区 = Node ESM；client 半区 = `window.__ModuleLoader__.load({id, factory})` 工厂包，外部依赖与 DSH web 的 `PLATFORM_MODULES` 完全一致）
 - **可视化**：零依赖手写 SVG（DSH web 未内置图表库；自绘与平台渲染方式一致、体积最小、最稳定）
 
 ## 安装
 
-需要 [DSH](https://github.com/deepseek-ai/deepseek-harness)（`npx @deepseek-ai/dsh`，版本 ≥ 0.1.0-rc.6）。
+需要 [DSH](https://github.com/deepseek-ai/deepseek-harness) ≥ 0.1.0-rc.6、Node.js ≥ 20，
+以及 PATH 上的 [pnpm](https://pnpm.io/install)（`dsh plugin` 会把安装命令转发给 pnpm）。
+
+### 方式一：npm 仓库安装（推荐，含预构建产物）
 
 ```sh
-git clone https://github.com/<you>/dsh-usage-chart
-cd dsh-usage-chart
-npm install        # 安装构建依赖
-npm run build      # 产出 lib/index.js（host）与 lib/client.js（client）
-
-# 安装到 profile（默认 web）：
-dsh plugin --profile web add ./dsh-usage-chart
+dsh plugin --profile web add dsh-usage-chart
 
 # 重启 DSH web 后生效
 dsh web --profile web
 ```
 
-### 配置余额查询
+更新时重新执行上面的 `add`，然后重启 DSH Web。
 
-余额查询需要 DeepSeek API Key，二选一：
-
-1. **环境变量**（推荐）：启动 `dsh web` 前导出 `DEEPSEEK_API_KEY=sk-...`
-2. **插件配置**：在 profile 的 `cordis.patch.yml` 中覆盖：
-
-```yaml
-- id: dsh-usage-chart
-  name: dsh-usage-chart
-  config:
-    apiKey: 'sk-...'        # 留空则回退到环境变量
-    baseUrl: 'https://api.deepseek.com'
-```
-
-未配置 Key 时，指示器显示 `余额 –`，点击可重试；面板内会提示如何配置。
-
-## 从 GitHub 安装（无发布）
+### 方式二：从 GitHub 安装（源码构建）
 
 ```sh
-dsh plugin --profile web add github:<you>/dsh-usage-chart
+dsh plugin --profile web add github:Max-Samson/dsh-usage-chart#<commit-sha>
 ```
 
 Git 安装会执行包的 `prepare` 脚本（`node build.mjs`）从源码构建。pnpm ≥ 10 首次会拒绝运行
@@ -80,15 +80,87 @@ allowBuilds:
 ```
 
 > 放行意味着允许该包源码在安装时于本机执行，请只对可信来源这么做，并固定 commit
-> （`github:<you>/dsh-usage-chart#<sha>`）。
+> （`github:Max-Samson/dsh-usage-chart#<sha>`）。
 
-## 发布
+### 方式三：本地目录安装（开发自测）
 
 ```sh
-npm run build
-npm publish
-# GitHub 仓库添加 topic: dsh-plugin，便于收录进 awesome-dsh-plugin
+git clone https://github.com/Max-Samson/dsh-usage-chart.git
+cd dsh-usage-chart
+npm ci && npm run build
+dsh plugin --profile web add "$PWD"   # 以链接方式安装当前目录
+dsh web --profile web
 ```
+
+### 验证安装
+
+1. 组合配置中应出现插件行：
+
+   ```sh
+   dsh --profile web --dump-config | grep -A4 'id: dsh-usage-chart'
+   ```
+
+2. 打开 DSH Web，进入任意已有会话：输入框下方应出现「用量」指示器（含 token/成本/模型），
+   右侧为余额；点击 ▸ 展开可视化面板。未配置 API Key 时余额显示 `–`，面板内会提示配置方式。
+
+### 配置余额查询
+
+余额查询需要 DeepSeek API Key，二选一：
+
+1. **环境变量**（推荐）：启动 `dsh web` 前导出 `DEEPSEEK_API_KEY=sk-...`
+2. **插件配置**：在 profile 的 `cordis.patch.yml` 中覆盖（Key 会以明文落盘，仅建议用于受保护的本机 profile）：
+
+```yaml
+- insert:
+    - id: dsh-usage-chart
+      name: dsh-usage-chart
+      config:
+        apiKey: 'sk-...'        # 留空则回退到环境变量
+        baseUrl: 'https://api.deepseek.com'
+```
+
+未配置 Key 时，指示器显示 `余额 –`，点击可重试；面板内会提示如何配置。
+
+## 参与开发
+
+```sh
+git clone https://github.com/Max-Samson/dsh-usage-chart.git
+cd dsh-usage-chart
+npm ci
+npm run verify       # typecheck + build + node:test
+npm pack --dry-run   # 检查最终发布内容
+```
+
+本地自测安装见上文「方式三」；贡献前请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)，
+安全问题请按 [SECURITY.md](./SECURITY.md) 私下报告。
+
+### 可视化验证脚本（可选）
+
+`scripts/` 下有基于 playwright-core 的探测脚本，针对**已运行**的 DSH Web（默认
+`http://127.0.0.1:3080`，需要本机 Chrome/Chromium），通过环境变量与你的环境解耦：
+
+| 环境变量 | 默认 | 说明 |
+|---|---|---|
+| `DSH_PROBE_URL` | `http://127.0.0.1:3080` | 目标 DSH Web 地址 |
+| `DSH_PROBE_CHROME` | 平台常见位置 | Chrome/Chromium 可执行文件路径 |
+| `DSH_PROBE_SESSION` | 内置常用标题 | 目标会话标题片段（逗号分隔多个备选） |
+| `DSH_PROBE_ARTIFACTS` | `<仓库>/artifacts` | 截图输出目录（已 gitignore） |
+
+```sh
+node scripts/shot.mjs          # 收起/展开两张截图
+node scripts/probe-panel.mjs   # 面板是否被容器裁剪
+node scripts/probe-popover.mjs # 悬浮面板边界与开合
+node scripts/verify-render.mjs # 完整渲染验证（含明暗主题、中英文界面）
+```
+
+## 维护者发布
+
+1. 确认 `package.json` 与 `CHANGELOG.md` 版本一致并执行 `npm run verify`。
+2. 创建 `v<version>` GitHub Release。
+3. `release.yml` 通过 npm Trusted Publishing 发布带 provenance 的预构建包。
+4. 在 GitHub 添加 `dsh-plugin`、`dsh`、`deepseek-harness` topics，供 Awesome DSH Plugin 自动发现。
+
+首次发布前，需要在 npm 包设置中把本仓库的 `release.yml` 配置为 Trusted Publisher，并在 GitHub 创建 `npm` environment。
 
 ## 插件结构
 
@@ -96,7 +168,7 @@ npm publish
 dsh-usage-chart/
 ├── package.json          # dsh.bundle（安装层）+ dsh.client（浏览器半区）+ exports["./client"]
 ├── cordis.patch.yml      # 插件行插入（config.apiKey / baseUrl）
-├── build.mjs             # esbuild 双产物构建
+├── build.mjs             # esbuild 双产物 + tsc 类型声明（lib/types）构建
 ├── src/
 │   ├── index.ts          # host 半区：/dsh-usage-chart/balance 余额代理路由
 │   ├── pricing.ts        # 官方刊例价表 + 成本计算（host/client 共享）
@@ -110,11 +182,30 @@ dsh-usage-chart/
 └── types/                # vendored 最小类型声明（DSH client 包未发布稳定版）
 ```
 
-## 已知边界
+## 数据与安全边界
 
-- 「每轮用量」柱状图仅覆盖**本页面加载以来**的观测增量（投影只持久化累计值，不持久化逐轮历史）；累计值始终准确。
+- token 与上下文数据来自当前 DSH 会话投影；每轮图表优先读取会话日志，读取失败时会明确标注并回退到本页观测。
 - 成本为官方刊例价估算；官方价格调整后需升级本插件。
 - 余额经宿主同源路由代理（浏览器直连官方 API 有 CORS 与密钥暴露问题）。
+- Host 路由只接受同源 GET 请求，并为 JSON 响应设置 `no-store`；插件不会把 API Key 发送到浏览器。
+- 自定义 API 地址必须使用 HTTPS；仅回环地址允许 HTTP，便于连接本地代理。
+
+## 兼容性
+
+| 组件 | 支持范围 |
+|---|---|
+| DSH | ≥ 0.1.0-rc.6，当前按 0.1.x API 构建 |
+| Node.js | ≥ 20 |
+| Web UI | React 18 / `conversation.composer.dock` |
+| 系统 | macOS、Linux、Windows（纯 JavaScript，无原生依赖） |
+
+## 社区与开源
+
+- [贡献指南](./CONTRIBUTING.md)
+- [行为准则](./CODE_OF_CONDUCT.md)
+- [支持渠道](./SUPPORT.md)
+- [安全报告](./SECURITY.md)
+- [第三方声明](./THIRD_PARTY_NOTICES.md)
 
 ## License
 

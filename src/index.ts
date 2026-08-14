@@ -10,6 +10,18 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 
+export {
+  PRICING,
+  ZERO_BUCKETS,
+  billedInputTokens,
+  cacheHitPercent,
+  estimateCost,
+  formatTokens,
+  formatUsd,
+  pricingFor,
+} from './pricing.ts'
+export type { ModelPricing, TokenUsageBuckets } from './pricing.ts'
+
 export const name = 'dsh-usage-chart'
 
 /** 依赖 webServer（路由载体）与 sessions（会话日志读取）。 */
@@ -66,11 +78,68 @@ export interface SessionEventLike {
 
 const DEFAULT_BASE_URL = 'https://api.deepseek.com'
 
+/**
+ * Normalize and validate the upstream API URL.
+ * HTTPS is required except for loopback addresses used by local API proxies.
+ */
+export function normalizeBaseUrl(value: string | undefined): string {
+  const candidate = value?.trim() || DEFAULT_BASE_URL
+  let url: URL
+  try {
+    url = new URL(candidate)
+  } catch {
+    throw new TypeError('dsh-usage-chart: config.baseUrl must be an absolute URL')
+  }
+  const loopback = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]'
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) {
+    throw new TypeError('dsh-usage-chart: config.baseUrl must use HTTPS (HTTP is only allowed for loopback proxies)')
+  }
+  if (url.username !== '' || url.password !== '') {
+    throw new TypeError('dsh-usage-chart: config.baseUrl must not contain credentials')
+  }
+  url.hash = ''
+  url.search = ''
+  return url.toString().replace(/\/$/, '')
+}
+
+/** Reject browser requests initiated outside the DSH Web origin. */
+export function isTrustedRequest(req: IncomingMessage): boolean {
+  if (req.method !== 'GET') return false
+  const fetchSite = req.headers['sec-fetch-site']
+  if (typeof fetchSite === 'string' && fetchSite !== 'same-origin' && fetchSite !== 'none') return false
+
+  const origin = req.headers.origin
+  const host = req.headers.host
+  if (typeof origin === 'string' && typeof host === 'string') {
+    try {
+      if (new URL(origin).host !== host) return false
+    } catch {
+      return false
+    }
+  }
+  return true
+}
+
+function guardRequest(req: IncomingMessage, res: ServerResponse): boolean {
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', 'GET')
+    writeJson(res, 405, { ok: false, reason: 'method-not-allowed' })
+    return false
+  }
+  if (!isTrustedRequest(req)) {
+    writeJson(res, 403, { ok: false, reason: 'cross-origin-request' })
+    return false
+  }
+  return true
+}
+
 function writeJson(res: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body)
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
   })
   res.end(payload)
 }
@@ -86,17 +155,23 @@ function addInto(target: UsageBuckets, other: UsageBuckets): void {
   target.cacheWriteTokens += other.cacheWriteTokens
 }
 
-function bucketsOf(usage: {
-  inputTokens: number
-  outputTokens: number
-  cacheReadTokens?: number
-  cacheWriteTokens?: number
-}): UsageBuckets {
+function tokenCount(value: unknown): number | null {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null
+}
+
+function bucketsOf(usage: unknown): UsageBuckets | null {
+  if (typeof usage !== 'object' || usage === null) return null
+  const value = usage as Record<string, unknown>
+  const inputTokens = tokenCount(value.inputTokens)
+  const outputTokens = tokenCount(value.outputTokens)
+  const cacheReadTokens = value.cacheReadTokens === undefined ? 0 : tokenCount(value.cacheReadTokens)
+  const cacheWriteTokens = value.cacheWriteTokens === undefined ? 0 : tokenCount(value.cacheWriteTokens)
+  if (inputTokens === null || outputTokens === null || cacheReadTokens === null || cacheWriteTokens === null) return null
   return {
-    uncachedInputTokens: usage.inputTokens,
-    outputTokens: usage.outputTokens,
-    cacheReadTokens: usage.cacheReadTokens ?? 0,
-    cacheWriteTokens: usage.cacheWriteTokens ?? 0,
+    uncachedInputTokens: inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
   }
 }
 
@@ -136,6 +211,8 @@ export function foldTurnUsage(events: readonly SessionEventLike[]): {
       usage = event.data.usage
     }
     if (usage === undefined || turn === undefined || step === undefined) continue
+    const sample = bucketsOf(usage)
+    if (sample === null) continue
     const key = `${turn}:${step}`
     if (currentKey !== key) {
       if (stepBuckets !== null) commitStep(currentTurn, stepBuckets)
@@ -143,12 +220,7 @@ export function foldTurnUsage(events: readonly SessionEventLike[]): {
       currentTurn = turn
       stepBuckets = zeroBuckets()
     }
-    stepBuckets = bucketsOf(usage as {
-      inputTokens: number
-      outputTokens: number
-      cacheReadTokens?: number
-      cacheWriteTokens?: number
-    })
+    stepBuckets = sample
   }
   if (stepBuckets !== null) commitStep(currentTurn, stepBuckets)
 
@@ -227,14 +299,13 @@ export function apply(ctx: Context, config: Config = {}): void {
     config.apiKey?.trim() !== '' && config.apiKey !== undefined
       ? (config.apiKey as string).trim()
       : (process.env.DEEPSEEK_API_KEY ?? '').trim()
-  const baseUrl = config.baseUrl?.trim() !== '' && config.baseUrl !== undefined
-    ? (config.baseUrl as string).trim()
-    : DEFAULT_BASE_URL
+  const baseUrl = normalizeBaseUrl(config.baseUrl)
 
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
     path: '/dsh-usage-chart/balance',
-    async handler(_req: IncomingMessage, res: ServerResponse) {
+    async handler(req: IncomingMessage, res: ServerResponse) {
+      if (!guardRequest(req, res)) return
       const apiKey = resolveApiKey()
       if (apiKey === '') {
         writeJson(res, 200, {
@@ -254,6 +325,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     kind: 'exact',
     path: '/dsh-usage-chart/usage',
     async handler(req: IncomingMessage, res: ServerResponse) {
+      if (!guardRequest(req, res)) return
       const url = new URL(req.url ?? '/', 'http://localhost')
       const sessionId = url.searchParams.get('session') ?? ''
       if (!/^session-[\w-]+$/.test(sessionId)) {

@@ -10,7 +10,12 @@
  * 用法：node build.mjs   （可选 DSH_PLUGIN_ID 覆盖注册 id，默认 dsh-usage-chart）
  */
 import { build } from 'esbuild'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, rmSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { createRequire } from 'node:module'
+
+const require = createRequire(import.meta.url)
+const tscBin = require.resolve('typescript/bin/tsc')
 
 const PLUGIN_ID = process.env.DSH_PLUGIN_ID ?? 'dsh-usage-chart'
 
@@ -31,6 +36,9 @@ const CLIENT_EXTERNALS = [
   '@deepseek-ai/dsh-client-runtime/client',
 ]
 
+// A clean output directory prevents stale chunks or declarations from leaking
+// into an npm release when an entry point is renamed or removed.
+rmSync('lib', { recursive: true, force: true })
 mkdirSync('lib', { recursive: true })
 
 await Promise.all([
@@ -76,4 +84,13 @@ await Promise.all([
   }),
 ])
 
-console.log(`[dsh-usage-chart] built lib/index.js + lib/client.js (id=${PLUGIN_ID})`)
+// ── 类型声明（lib/types/*.d.ts，package.json exports.types 指向这里） ────────
+// esbuild 不产出 .d.ts；tsconfig.build.json 走声明-only 编译，保证
+// `import ... from 'dsh-usage-chart'` 与 `... from 'dsh-usage-chart/client'`
+// 的类型契约真实存在（发布/安装后不悬挂）。
+const tsc = spawnSync(process.execPath, [tscBin, '-p', 'tsconfig.build.json'], {
+  stdio: 'inherit',
+})
+if (tsc.status !== 0) process.exit(tsc.status ?? 1)
+
+console.log(`[dsh-usage-chart] built lib/index.js + lib/client.js + lib/types (id=${PLUGIN_ID})`)

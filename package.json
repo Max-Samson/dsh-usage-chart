@@ -3,7 +3,24 @@
   "version": "0.1.0",
   "description": "DeepSeek 用量 / 成本 / 余额仪表盘 for DSH Web：输入框下方实时指标指示器 + 零依赖 SVG 用量可视化图表，token 数据来自官方 adapter 上报，余额来自官方 /user/balance 接口。",
   "type": "module",
+  "sideEffects": false,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Max-Samson/dsh-usage-chart.git"
+  },
+  "homepage": "https://github.com/Max-Samson/dsh-usage-chart#readme",
+  "bugs": {
+    "url": "https://github.com/Max-Samson/dsh-usage-chart/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
   "exports": {
     ".": {
       "types": "./lib/types/index.d.ts",
@@ -20,12 +37,24 @@
     "src",
     "cordis.patch.yml",
     "README.md",
+    "README_EN.md",
+    "CHANGELOG.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "SUPPORT.md",
+    "THIRD_PARTY_NOTICES.md",
+    "docs/images/usage-panel-demo-en-light.png",
+    "docs/images/usage-panel-demo-zh-dark.png",
     "LICENSE"
   ],
   "scripts": {
     "build": "node build.mjs",
     "prepare": "node build.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "verify": "npm run typecheck && npm test",
+    "prepublishOnly": "npm run verify"
   },
   "keywords": [
     "dsh",
