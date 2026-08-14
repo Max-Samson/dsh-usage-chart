@@ -33,20 +33,21 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "lib",
-    "src",
-    "cordis.patch.yml",
-    "README.md",
-    "README_EN.md",
     "CHANGELOG.md",
+    "CHANGELOG_ZH.md",
     "CODE_OF_CONDUCT.md",
     "CONTRIBUTING.md",
+    "LICENSE",
+    "README.md",
+    "README_EN.md",
     "SECURITY.md",
     "SUPPORT.md",
     "THIRD_PARTY_NOTICES.md",
+    "cordis.patch.yml",
     "docs/images/usage-panel-demo-en-light.png",
     "docs/images/usage-panel-demo-zh-dark.png",
-    "LICENSE"
+    "lib",
+    "src"
   ],
   "scripts": {
     "build": "node build.mjs",

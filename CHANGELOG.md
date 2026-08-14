@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
+All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). 中文版见 [CHANGELOG_ZH.md](./CHANGELOG_ZH.md).
 
 ## [0.2.0] - 2026-08-15
 
@@ -44,6 +44,17 @@ All notable changes to this project are documented here. The format follows [Kee
 - Cost estimates are now single-sourced: real-time indicator cost and panel cost both
   consume the `/pricing` snapshot; the price source, verification date, and
   unknown-model marker are shown in the panel.
+- Panel cost resolution now prefers the host fold's authoritative model attribution
+  (ADR 1) over snapshot provenance, which can be absent for older sessions — the price
+  source previously showed a spurious "fallback estimate" in that case.
+
+### Upgrade note
+
+- **Restart `dsh web` after upgrading to 0.2.0.** The Host process caches plugin code
+  in memory (no hot reload): the new `/dsh-usage-chart/pricing` route and the
+  `rounds`-shaped `/dsh-usage-chart/usage` response are only served after a restart.
+  Until then the indicator silently omits the cost segment and the panel shows
+  "Price snapshot unavailable".
 
 ## [0.1.1] - 2026-08-14
 

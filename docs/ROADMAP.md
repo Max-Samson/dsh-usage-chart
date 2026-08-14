@@ -92,7 +92,7 @@ pricing 解析优先级（host 侧，每次请求实时解析）：
 
 ## 5. 路线图
 
-### v0.2.0 — 会话成本解释力（轮次级）
+### ✅ v0.2.0 — 会话成本解释力（轮次级）· 已交付 2026-08-15
 
 **数据层**（host 折叠扩展，全部已验证，见 §3）
 
@@ -112,12 +112,58 @@ pricing 解析优先级（host 侧，每次请求实时解析）：
 
 **验收**：保持零运行时依赖；明暗主题可读（沿用 `--duc-*` CSS 变量）；键盘可达（沿用现有 tabIndex / focus 路径）；中英双语文案同步。
 
-### v0.3.0 — 上下文诊断（差异化核心）
+#### 交付记录（2026-08-15）
 
-- 上下文组成视图：`contextBreakdown`（系统/工具/消息）+ `contextPressure`（压力 vs 容量）；
-- 压缩事件时间线：`compaction/summary` 的 `shadowedTokenCount` / `shadowedRange` / model / usage——哪一轮压缩、释放多少、summarize 花费多少；
-- 上下文增长归因：`user/message.source` 区分人工输入 / 注入 / 目标续跑；工具输出大文件归因；
-- 接近阈值时的操作建议：开新会话 / 压缩 / 减少大文件注入（只做提示文案，不越权执行）。
+- 实现见 [ARCHITECTURE.md §2](./ARCHITECTURE.md)：RoundFold（`usage/rounds.ts`）、
+  PricingSource 接缝（`pricing/source.ts`，builtin + file 适配器）、PricingResolver
+  （`pricing/resolve.ts`）、`/pricing` 路由、RoundBars 三视角 + 耗时叠加 + 异常标记 +
+  解释卡、Anomaly（`diagnose/anomaly.ts`）、CostBadge（assistant-actions 槽位）、
+  Dock 压力条；`pricing.ts` 已拆分 calc/source。
+- 验证：`npm run verify` 28 项测试全绿；用官方解码器对真实会话日志（26 万事件 / 22 轮）
+  实测折叠正确；`scripts/verify-render.mjs` 对运行中的 DSH Web 端到端通过
+  （退出码 0、无控制台错误、成本/耗时/解释卡/中英文界面均正常）。
+- **运维要点**：宿主进程无插件热重载，升级 0.2.0 后必须重启 `dsh web` 才能挂载新路由
+  （已写入 CHANGELOG 升级注意）。
+
+### v0.3.0 — 上下文诊断（差异化核心）· 下一版本开发优化方向
+
+**目标**：把「上下文为什么变大、哪一轮被压缩、释放了多少」变成可解释视图（Dock 入口 +
+成本关联解释，不与 dsh-context 全面重叠）。
+
+**数据源（§3.2/§3.3 已验证，实施前复核）**
+
+- `contextBreakdown` 投影：`systemTokens / toolsTokens / messageTokens`——「上下文为什么变大」官方已算好，直接消费并标注近似值；
+- `contextPressure` 投影：`pressureTokens / projectedTokens / contextWindow`——压力 vs 容量（v0.2 压力条已消费，v0.3 深化）；
+- `compaction/summary` 事件：`shadowedTokenCount` / `shadowedRange{start,end}` / `shadowedSeqs` / `provider` / `model` / `usage?`——哪一轮压缩、释放多少 token、summarize 调用花了多少；
+- `user/message.source`：distinguish 人工输入 / `agent.inject()` / 目标续跑——上下文增长来源归因。
+
+**模块落地（按 ARCHITECTURE §2.2）**
+
+1. **compaction 折叠**（host，`usage/compactions.ts` 或 RoundFold 扩展）：从事件流折叠压缩记录
+   `{ seq, startedAt, endAt, shadowedTokenCount, shadowedRange, model, summarizeCost? }`，
+   纯函数 + 合成事件流测试（复用 rounds.test 模式）；
+2. **ContextReport**（client，`diagnose/context.ts`，纯函数）：
+   `report(pressure, breakdown, compactions) → sections[]`——组成（官方投影）+ 压缩时间线 +
+   阈值建议（开新会话 / 压缩 / 减少大文件注入，只出提示文案不越权执行）；
+3. **Dock 压力条深化**：迷你 breakdown 分段（系统/工具/消息）+ 压缩事件刻度点，
+   沿用现有压力条位置与交互；
+4. **面板上下文小节**：压缩时间线（哪一轮压缩、释放多少、summarize 花费）+ 增长归因
+   （人工/注入/续跑），与成本解释卡同区可切换。
+
+**验收**：零运行时依赖不破；contextBreakdown 消费标注为近似值；compaction 折叠有测试；
+中英双语；键盘可达。
+
+### v0.2 收尾中发现的优化方向（v0.2.x patch 或并入 v0.3，按价值排序）
+
+1. **/pricing 快照刷新**：client 目前 5 分钟缓存；用户改 `pricing.json` 后 UI 不即时——
+   加「刷新」入口或缩短缓存/轮询（低优先级）；
+2. **会话作用域提示**：`ctx.sessions.get` 只解析当前已加载的会话，未加载/跨工作区会话
+   返回 `session-not-found`——面板应区分「会话不可用」与「无数据」，避免误读；
+3. **指示器模型归因**：面板已优先 host rounds 模型（ADR 1）；指示器仍用快照 provenance，
+   可评估经宿主轻量通道取权威模型（权衡 LiveObservation 独立性，决策 2）；
+4. **大会话折叠**：26 万事件全量折叠正确但每请求全量计算 + 全量传输；轮次多时可
+   宿主侧截断（最近 N 轮）或缓存折叠结果（v0.4 HistoryStore 一并考虑）；
+5. **官方价格自动抓取**（远期）：借鉴 Ghost011118 的 6h 策略，第一版「可覆盖 + 可知晓」已达标。
 
 ### v0.4.0 — 跨会话概览（可选）
 

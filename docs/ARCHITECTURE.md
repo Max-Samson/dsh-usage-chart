@@ -4,35 +4,44 @@
 > 词汇：**模块 / 接口 / 深度 / 接缝（seam）/ 适配器（adapter）/ 杠杆（leverage）/ 局部性（locality）**。
 > 目标版本：v0.2（会话成本解释力）→ v0.3（上下文诊断）→ v0.4（跨会话概览），见 [ROADMAP.md](./ROADMAP.md)。
 
-## 1. 现状地图（v0.1.x，10 个源文件）
+## 1. 现状地图（v0.2.0 · 已交付，21 个源文件）
 
 ```
-Host 半区（Node）                     Client 半区（浏览器）
-┌─────────────────────────────┐      ┌─────────────────────────────────────┐
-│ src/index.ts                │      │ client/index.ts       槽位+locale 注册│
-│  ├─ apply(): 注册 2 路由      │      │ client/UsageIndicator  Dock 编排根    │
-│  │   /balance 余额代理        │◄────►│ client/UsagePanel      面板编排根      │
-│  │   /usage   会话日志折叠     │      │ client/charts  TurnBars/HStack/Legend│
-│  └─ foldTurnUsage（纯函数）   │      │ client/usage-api  useSessionUsage    │
-│ src/pricing.ts（共享常量+纯算）│◄────►│ client/balance    useBalance        │
-│                              │      │ client/snapshot   快照节点提取        │
-│                              │      │ client/i18n + styles                │
-└─────────────────────────────┘      └─────────────────────────────────────┘
+Host 半区（Node）                           Client 半区（浏览器）
+┌──────────────────────────────────┐        ┌──────────────────────────────────────────┐
+│ src/index.ts                     │        │ client/index.ts       槽位×2 + locale 注册│
+│  ├─ apply(): 注册 3 路由           │        │ client/UsageIndicator  Dock 编排根 + 压力条 │
+│  │   /balance  余额代理            │◄──────►│ client/UsagePanel      面板编排根（薄）     │
+│  │   /usage    会话日志折叠(rounds) │        │ client/charts          原语 HStack/Legend   │
+│  │   /pricing  价格解析快照         │        │ client/chart/RoundBars 深模块：三视角+叠加   │
+│  ├─ usage/rounds.ts  RoundFold    │        │ client/rounds/         observed+history     │
+│  └─ pricing/                      │        │ client/diagnose/       anomaly（纯）        │
+│       ├─ calc.ts     纯共享数学     │◄──────►│ client/badge/          CostBadge            │
+│       ├─ source.ts   PricingSource │        │ client/pricing-api     usePricing(/pricing) │
+│       └─ resolve.ts  Resolver     │        │ client/balance + snapshot + i18n + styles   │
+└──────────────────────────────────┘        └──────────────────────────────────────────┘
 ```
 
-已经**深**的两个模块（保持方向，继续加深）：
+**深模块（保持方向，继续加深）**：
 
-- `foldTurnUsage`（host，纯函数）：`events → { totals, turns }`——小接口、大实现（折叠语义、去重、回退），✅ 是深模块。
-- `TurnBars`（client，React）：`{ turns, mode, locale } → 堆叠柱+Tooltip+键盘`——✅ 是深模块。
+- `foldRounds`（host，纯函数）：`events → { totals, rounds }`——折叠语义、去重、回退 + 耗时/TTFT/TPS/模型归因/结束原因/每轮成本，✅ 深模块。
+- `RoundBars`（client，React）：`{ rounds, mode: absolute|ratio|cost, flags, locale } → 图表`——三视角 + 耗时叠加 + 异常标记 + 解释卡，✅ 深模块。
+- `filePricingSource` / `createPricingResolver`（host）：价格「来源」与「优先级」分离，接缝成型（ADR 2）。
 
-**摩擦点（浅 / 无局部性）**：
+**摩擦点（v0.1 记录 → v0.2 处置）**：
 
-1. **两套折叠实现**：host `foldTurnUsage`（权威历史）与 client `useTurnUsage`（投影增量观测）语义重复；回退逻辑散在指示器（观测）与面板（来源标注）两处——修一处语义要改两个地方。**决策 2 已拍板：保持独立**——职责优先于合并，client 观测只服务实时指示器，host 折叠是权威基准。
-2. **两条价格路径会分叉**：`pricing.ts` 常量表被两个半区直接 import；v0.2 要加用户覆盖/核验日期/未知模型标记，若不做接缝，历史成本（host 解析）与实时成本（client 内置表）将各说各话。
-3. **模型归因两个来源**：client 从快照 `provenance/requestConfig` 推导；host 折叠本可从 `request/context` 按轮归因——同一概念两个出处。
-4. **派生计算内联在编排根**：`UsagePanel` 内联 occupancy%、inputCost/outputCost、图表来源标注；v0.2/v0.3 会再加异常判定、耗时、上下文构成——编排根会越来越胖。
+1. **两套折叠实现**（host `foldRounds` vs client 观测）：**决策 2 维持独立**——client 观测只服务实时指示器（`rounds/observed.ts`），host 折叠是权威基准（`rounds/history.ts`）；回退标注在面板统一。
+2. **两条价格路径会分叉**：✅ **已解决**——`pricing.ts` 拆为 `calc.ts`（纯数学，两半区共享）+ host `source/resolve`；client 唯一价格输入是 `/pricing` 快照（ADR 2），不再内置价格常量。
+3. **模型归因两个来源**：✅ **已收敛**——host `foldRounds` 从 `request/context` 按轮归因（权威）；面板成本解析**优先 host rounds 模型**（ADR 1），快照 provenance 仅作回退。
+4. **派生计算内联在编排根**：✅ **已下沉**——异常判定（`diagnose/anomaly.ts`）、成本解析（`pricing-api.ts`）、图表（`chart/RoundBars.tsx`）均为独立模块，`UsagePanel` 只做编排。
 
-## 2. 目标架构（v0.2+ 模块地图）
+**v0.2 落地后的新观察（记录，供 v0.3 决策）**：
+
+- 宿主无插件热重载：升级后必须重启 `dsh web`（运维契约，见 CHANGELOG）；
+- `ctx.sessions.get` 只解析当前已加载会话，跨工作区/未加载会话返回 `session-not-found`；
+- 大会话（26 万事件）折叠正确，但每请求全量计算 + 全量传输（v0.4 HistoryStore 一并考虑截断/缓存）。
+
+## 2. 目标架构（v0.2 已落地 → v0.3 模块地图）
 
 ### 2.1 Host 半区
 
@@ -88,21 +97,23 @@ HistoryStore = { appendSample(round), queryRange(from,to) }   // 接口
 
 ## 3. 版本落地映射
 
-| 版本 | 落地的模块 | 删除/重构 |
-|---|---|---|
-| v0.2.0 | RoundFold 加深（耗时/TTFT/TPS/**模型归因 `request/context`+回退**/结束原因）、**PricingSource 接缝现在就立**（builtin + file 适配器）+ Resolver、`/pricing` 路由、RoundBars cost 模式 + 叠加 + 异常标记、Anomaly、CostBadge | `pricing.ts` 拆分 calc/source；LiveObservation / HistoryFeed **保持独立**（决策 2） |
-| v0.3.0 | ContextReport、compaction 折叠（RoundFold 扩展或独立 `usage/compactions.ts`）、Dock 上下文压力条 | 压力条用 `contextPressure` 投影，不新开路由 |
-| v0.4.0 | HistoryStore 接缝 + 设置页历史视图、导出 | 热力图作为入口之一（复用 RoundBars 的 SVG 设施） |
+| 版本 | 落地的模块 | 删除/重构 | 状态 |
+|---|---|---|---|
+| v0.2.0 | RoundFold 加深（耗时/TTFT/TPS/**模型归因 `request/context`+回退**/结束原因）、**PricingSource 接缝现在就立**（builtin + file 适配器）+ Resolver、`/pricing` 路由、RoundBars cost 模式 + 叠加 + 异常标记、Anomaly、CostBadge、Dock 压力条 | `pricing.ts` 拆分 calc/source；LiveObservation / HistoryFeed **保持独立**（决策 2）；`usage-api.ts` 移除 → `rounds/` | ✅ 已交付 2026-08-15 |
+| v0.3.0 | ContextReport（`diagnose/context.ts`）、compaction 折叠（独立 `usage/compactions.ts`）、Dock 压力条深化（breakdown 分段 + 压缩刻度） | 压力条用 `contextPressure` 投影，不新开路由；`contextBreakdown` 消费标注近似值 | 下一版本 |
+| v0.4.0 | HistoryStore 接缝 + 设置页历史视图、导出 | 热力图作为入口之一（复用 RoundBars 的 SVG 设施） | 可选 |
 
 ## 4. 测试面（接口即测试面）
 
 | 模块 | 测试方式 | 现有设施 |
 |---|---|---|
-| RoundFold | node --test 喂合成事件流（带 time 的 turn/start→chunk→end）断言 rounds | `tests/*.test.mjs` 已就绪 |
-| PricingResolver | 注入 source map fake（builtin/file），断言优先级与未知标记 | 同上 |
-| Anomaly | 喂 round 序列断言 flag | 同上 |
-| HistoryStore | memory fake + 临时目录 JSONL 真写读 | 同上 |
-| HistoryFeed / RoundBars / CostBadge | playwright-core 视觉验证（现有 `scripts/probe-*.mjs` 扩展） | `scripts/` 已就绪 |
+| RoundFold | node --test 喂合成事件流（带 time 的 turn/start→chunk→end）断言 rounds | ✅ `tests/rounds.test.mjs`（含真实日志形状验证） |
+| PricingResolver | 注入 source map fake（builtin/file），断言优先级与未知标记 | ✅ `tests/pricing.test.mjs`（临时目录真写读） |
+| Anomaly | 喂 round 序列断言 flag | ✅ `tests/anomaly.test.mjs`（经 `lib/client-test.js` 束） |
+| HistoryStore（v0.4） | memory fake + 临时目录 JSONL 真写读 | 待 v0.4 |
+| HistoryFeed / RoundBars / CostBadge | playwright-core 视觉验证（现有 `scripts/probe-*.mjs` 扩展） | ✅ `scripts/verify-render.mjs` 对运行中 DSH Web 端到端通过 |
+
+> 当前 `npm run verify` 共 28 项测试全绿。
 
 ## 5. ADR 备忘（本设计的决策点）
 

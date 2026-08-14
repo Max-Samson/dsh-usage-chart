@@ -6,7 +6,7 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/Max-Samson/dsh-usage-chart/ci.yml?branch=main)](https://github.com/Max-Samson/dsh-usage-chart/actions)
 [![License](https://img.shields.io/github/license/Max-Samson/dsh-usage-chart)](./LICENSE)
 
-[English](./README_EN.md) · [问题反馈](https://github.com/Max-Samson/dsh-usage-chart/issues)
+[English](./README_EN.md) · [问题反馈](https://github.com/Max-Samson/dsh-usage-chart/issues) · [更新日志（中文）](./CHANGELOG_ZH.md) · [Changelog (EN)](./CHANGELOG.md)
 
 界面预览：左侧为浅色英文界面，右侧为深色简体中文界面。两者均会跟随 DSH 的主题与语言设置。
 
@@ -79,6 +79,10 @@ dsh plugin --profile web add dsh-usage-chart
 ```
 
 完成后重启 DSH Web。
+
+> ⚠️ **升级到 v0.2.0 必须重启 `dsh web` 进程**：宿主在启动时缓存插件代码（无热重载），
+> 新的 `/pricing` 路由与 `/usage` 的 `rounds` 响应只有重启后才生效；重启前指示器会
+> 隐藏成本位、面板提示「价格快照不可用」。详见 [更新日志](./CHANGELOG_ZH.md)。
 
 > ⚠️ **未全局安装 dsh（报 `dsh: command not found` / PowerShell `无法将“dsh”项识别为…`）？
 > 把上面每条 `dsh` 都写成 `npx --yes @deepseek-ai/dsh`**，例如

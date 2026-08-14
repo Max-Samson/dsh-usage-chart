@@ -2,7 +2,7 @@
 
 > A usage, cost, and account-balance dashboard for DeepSeek Harness Web.
 
-[中文](./README.md) · [Report an issue](https://github.com/Max-Samson/dsh-usage-chart/issues)
+[中文](./README.md) · [Report an issue](https://github.com/Max-Samson/dsh-usage-chart/issues) · [Changelog (EN)](./CHANGELOG.md) · [更新日志（中文）](./CHANGELOG_ZH.md)
 
 Interface preview: light English on the left and dark Simplified Chinese on the right.
 Both variants follow the DSH theme and in-app language setting.
@@ -50,6 +50,12 @@ dsh plugin --profile web add dsh-usage-chart
 ```
 
 Then restart DSH Web.
+
+> ⚠️ **Upgrading to v0.2.0 requires restarting the `dsh web` process.** The Host caches
+> plugin code in memory (no hot reload): the new `/pricing` route and the `rounds`-shaped
+> `/usage` response are only served after a restart; until then the indicator omits the
+> cost segment and the panel shows "Price snapshot unavailable". See the
+> [Changelog](./CHANGELOG.md).
 
 > ⚠️ **No global `dsh` installed (`dsh: command not found` / PowerShell
 > `The term 'dsh' is not recognized…`)?** Prefix every `dsh` above with
