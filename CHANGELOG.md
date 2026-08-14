@@ -2,7 +2,19 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.1] - 2026-08-14
+
+### Added
+
+- Balance queries now resolve the DeepSeek API key through the DSH credentials service
+  (`ctx.get('credentials')`), so a key configured in the web UI (Settings → Models) or in
+  `.credentials.yaml` works without an environment variable or plugin config.
+
+### Fixed
+
+- Install warning `missing peer react@^18.2.0` (react is provided by the DSH web platform;
+  the peer is now marked optional).
+- Docs: document uninstall/cleanup steps in the README.
 
 ## [0.1.0] - 2026-08-14
 

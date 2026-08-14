@@ -23,17 +23,21 @@ The interface supports Chinese and English and follows the DSH in-app language s
 
 ## Install
 
-Requires [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) ≥ 0.1.0-rc.6,
-Node.js ≥ 20, and [pnpm](https://pnpm.io/install) on PATH (`dsh plugin` forwards installs to pnpm).
+Prerequisites: **[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) ≥ 0.1.0-rc.6** ·
+**Node.js ≥ 20** · **[pnpm](https://pnpm.io/install) on PATH** (`dsh plugin` forwards installs to pnpm).
 
-### Option 1: npm registry (recommended, prebuilt)
+> If you get `dsh: command not found` (or PowerShell's `The term 'dsh' is not recognized…`),
+> you only ran `npx @deepseek-ai/dsh` transiently — see FAQ item 1 (global install + new
+> terminal, or prefix every `dsh ...` with `npx --yes @deepseek-ai/dsh`).
+
+### Option 1: npm registry (recommended, prebuilt — no build tooling needed)
 
 ```sh
-dsh plugin --profile web add dsh-usage-chart
-dsh web --profile web
+dsh plugin --profile web add dsh-usage-chart   # installs and registers the profile plugin layer
+dsh web --profile web                          # starts DSH Web (stop it first if already running)
 ```
 
-Re-run the same `add` to update, then restart DSH Web.
+To update, re-run the `add` above and restart DSH Web.
 
 ### Option 2: install from GitHub (source build)
 
@@ -74,12 +78,63 @@ dsh web --profile web
 2. Open DSH Web and enter any existing session: the "Usage" indicator (tokens / cost / model)
    appears below the composer, with the account balance on the right; click ▸ to open the dashboard.
 
-Set `DEEPSEEK_API_KEY` before starting DSH Web to enable the balance query. The key stays in the Host process and is never sent to the browser.
+The balance query needs a DeepSeek API key, resolved per request in this order (no restart needed):
+
+1. **DSH Web settings (recommended, requires plugin ≥ 0.1.1)**: configure the DeepSeek API key
+   under Settings → Models. The plugin reads the same key through the DSH credentials service
+   (`.credentials.yaml` user layer); no extra setup is required.
+2. **Environment variable**: `DEEPSEEK_API_KEY=sk-...` before starting `dsh web` (the credentials
+   service's `env` layer resolves it the same way).
+3. **Plugin config**: override `config.apiKey` in the profile's `cordis.patch.yml` (stored in plain
+   text on disk — only recommended for a protected local profile).
+
+> Plugin versions < 0.1.1 do not read the web-UI key: use the environment variable or
+> `config.apiKey` instead.
+
+The key stays in the Host process and is never sent to the browser.
 
 ```sh
 export DEEPSEEK_API_KEY=sk-...
 dsh web --profile web
 ```
+
+### Uninstall
+
+```sh
+dsh plugin --profile web remove dsh-usage-chart   # removes the dependency and de-registers the layer
+dsh web --profile web                             # restart; the indicator/dashboard disappear
+```
+
+`remove` also cleans the package out of `node_modules` and `dsh.profile.bundles` (no leftovers).
+Optional thorough cleanup:
+
+- Remove any `config.apiKey` / `baseUrl` override block you added to the profile's `cordis.patch.yml`;
+- Remove the `dsh-usage-chart` entry under `allowBuilds` in `pnpm-workspace.yaml` (GitHub installs only);
+- The DeepSeek API key configured in the web UI lives in the DSH credentials file
+  (`~/.dsh/.credentials.yaml`) — **do not delete it**: DSH's own model service still uses that key.
+  Only remove it if you are sure you no longer use DSH with DeepSeek.
+
+## FAQ
+
+**Q: `dsh` is not found (`command not found` / PowerShell `The term 'dsh' is not recognized`)?**
+A: `npx @deepseek-ai/dsh` runs transiently and installs no global command. Run
+`npm install -g @deepseek-ai/dsh` and open a new terminal (on Windows also make sure the
+`npm config get prefix` directory is on PATH), or prefix every `dsh ...` with
+`npx --yes @deepseek-ai/dsh ...`. Missing pnpm is the same: `npm install -g pnpm`.
+
+**Q: Install shows `WARN missing peer react@^18.2.0`?**
+A: Harmless — react is provided by the DSH Web platform in the browser; the profile does not
+need it. Plugin ≥ 0.1.1 marks react as an optional peer and stops warning; on 0.1.0 the warning
+can be ignored.
+
+**Q: The balance still shows `–` / "not configured" after setting the API key in the web UI?**
+A: Make sure the plugin is ≥ 0.1.1 (balance queries read the web-UI key through the DSH
+credentials service from 0.1.1 on), then restart `dsh web`. As a stopgap, set
+`DEEPSEEK_API_KEY` or `config.apiKey`.
+
+**Q: `add` reports `dsh-usage-chart is not in the npm registry`?**
+A: The package is not published to npm yet. Use "Option 3: local directory" to test, or wait
+for the maintainer to publish.
 
 ## Data sources
 

@@ -51,19 +51,20 @@
 
 ## 安装
 
-需要 [DSH](https://github.com/deepseek-ai/deepseek-harness) ≥ 0.1.0-rc.6、Node.js ≥ 20，
-以及 PATH 上的 [pnpm](https://pnpm.io/install)（`dsh plugin` 会把安装命令转发给 pnpm）。
+前置要求：**[DSH](https://github.com/deepseek-ai/deepseek-harness) ≥ 0.1.0-rc.6** · **Node.js ≥ 20** · PATH 上有 **[pnpm](https://pnpm.io/install)**（`dsh plugin` 会把安装命令转发给 pnpm）。
 
-### 方式一：npm 仓库安装（推荐，含预构建产物）
+> 若提示 `dsh: command not found`（或 PowerShell `无法将“dsh”项识别为…`），说明只通过
+> `npx @deepseek-ai/dsh` 临时运行过、未安装全局命令——按 [FAQ](#常见问题faq) 第一条解决
+> （全局安装后重开终端，或每条 `dsh ...` 前加 `npx --yes @deepseek-ai/dsh`）。
+
+### 方式一：npm 仓库安装（推荐，预构建产物，无需构建工具）
 
 ```sh
-dsh plugin --profile web add dsh-usage-chart
-
-# 重启 DSH web 后生效
-dsh web --profile web
+dsh plugin --profile web add dsh-usage-chart   # 安装并自动登记为 profile 插件层
+dsh web --profile web                          # 启动 DSH Web（已在运行时先停止再启动）
 ```
 
-更新时重新执行上面的 `add`，然后重启 DSH Web。
+更新：重新执行上面的 `add` 后重启 DSH Web，即可升级到最新版本。
 
 ### 方式二：从 GitHub 安装（源码构建）
 
@@ -105,21 +106,59 @@ dsh web --profile web
 
 ### 配置余额查询
 
-余额查询需要 DeepSeek API Key，二选一：
+余额查询需要 DeepSeek API Key，按以下优先级解析（每次请求实时解析，改后无需重启）：
 
-1. **环境变量**（推荐）：启动 `dsh web` 前导出 `DEEPSEEK_API_KEY=sk-...`
-2. **插件配置**：在 profile 的 `cordis.patch.yml` 中覆盖（Key 会以明文落盘，仅建议用于受保护的本机 profile）：
+1. **DSH 网页端配置（推荐，需插件 ≥ 0.1.1）**：在 DSH Web 的「设置 → 模型」中配置
+   DeepSeek API Key。插件经 DSH 凭据服务读取同一密钥（`.credentials.yaml` 用户层），
+   无需额外操作；
+2. **环境变量**：启动 `dsh web` 前导出 `DEEPSEEK_API_KEY=sk-...`（凭据服务的 env 层，同样生效）；
+3. **插件配置**：在 profile 的 `cordis.patch.yml` 中覆盖（Key 会以明文落盘，仅建议用于受保护的本机 profile）：
 
 ```yaml
 - insert:
     - id: dsh-usage-chart
       name: dsh-usage-chart
       config:
-        apiKey: 'sk-...'        # 留空则回退到环境变量
+        apiKey: 'sk-...'        # 留空则回退到网页端/环境变量
         baseUrl: 'https://api.deepseek.com'
 ```
 
+> 插件版本 < 0.1.1 时不读取网页端密钥：请用环境变量或上面的 `config.apiKey` 配置。
+
 未配置 Key 时，指示器显示 `余额 –`，点击可重试；面板内会提示如何配置。
+
+### 卸载
+
+```sh
+dsh plugin --profile web remove dsh-usage-chart   # 移除依赖并自动从 profile 插件层注销
+dsh web --profile web                             # 重启后指示器/面板消失
+```
+
+`remove` 会同时清理 `node_modules` 中的包并把它从 `dsh.profile.bundles` 移除（无残留）。
+彻底清理（按需）：
+
+- 若曾在 profile 的 `cordis.patch.yml` 中写过 `config.apiKey`/`baseUrl` 覆盖块，删除该段；
+- 若为 GitHub 安装加过 `allowBuilds`，可移除 `pnpm-workspace.yaml` 中对应的 `dsh-usage-chart` 条目；
+- 网页端配置的 DeepSeek API Key 存于 DSH 凭据文件（`~/.dsh/.credentials.yaml`），
+  **不要删除**——DSH 自身的模型服务仍在使用该密钥；只有确定不再使用 DSH 的 DeepSeek 服务时才考虑移除。
+
+## 常见问题（FAQ）
+
+**Q：`dsh` 命令找不到（`command not found` / PowerShell `无法将“dsh”项识别为…`）？**
+A：`npx @deepseek-ai/dsh` 是临时运行、不产生全局命令。请 `npm install -g @deepseek-ai/dsh`
+并重开终端（Windows 还需确保 `npm config get prefix` 目录在 PATH）；或把每条 `dsh ...`
+换成 `npx --yes @deepseek-ai/dsh ...`。pnpm 缺失同理：`npm install -g pnpm`。
+
+**Q：安装时提示 `WARN missing peer react@^18.2.0`？**
+A：正常且无害——react 由 DSH Web 平台在浏览器端内置，profile 无需安装。插件 ≥ 0.1.1
+已把 react 标记为可选 peer，不再报警；0.1.0 的该警告可忽略。
+
+**Q：网页端配了 API Key，余额仍显示 `–` 或「未配置」？**
+A：请确认插件版本 ≥ 0.1.1（0.1.1 起余额查询才走 DSH 凭据服务读取网页端密钥）；
+升级后重启 `dsh web`。临时方案：先设环境变量 `DEEPSEEK_API_KEY` 或 `config.apiKey`。
+
+**Q：`add` 时报 `dsh-usage-chart is not in the npm registry`？**
+A：包尚未发布到 npm。请用「方式三：本地目录安装」测试，或等待维护者发布后重试。
 
 ## 参与开发
 

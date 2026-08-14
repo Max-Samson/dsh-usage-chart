@@ -7,7 +7,7 @@
  *  - `/dsh-usage-chart/usage`   — 读取会话日志（adapter 上报的完整事件流），
  *    折叠出每轮真实 token 用量（与 token-meter 相同的折叠语义）。
  */
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context, CredentialsService } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 
 export {
@@ -295,10 +295,26 @@ async function fetchBalance(apiKey: string, baseUrl: string): Promise<BalanceRes
  * @param config - 行配置（cordis.patch.yml 的 config）。
  */
 export function apply(ctx: Context, config: Config = {}): void {
-  const resolveApiKey = (): string =>
-    config.apiKey?.trim() !== '' && config.apiKey !== undefined
-      ? (config.apiKey as string).trim()
-      : (process.env.DEEPSEEK_API_KEY ?? '').trim()
+  /**
+   * 解析 API Key（每次请求解析，与官方 llm-deepseek 适配器同一通道）：
+   *  1) 插件 config.apiKey（显式配置优先）
+   *  2) DSH 凭据服务解析 'DEEPSEEK_API_KEY'——覆盖在网页端「设置 → 模型」
+   *     配置的密钥、用户/项目环境层与 $DEEPSEEK_API_KEY。凭据服务是可选
+   *     依赖，用 ctx.get('credentials') 读取（不声明 inject，缺失返回
+   *     undefined；cordis 属性访问未 inject 的服务会抛错）。
+   *  3) 无凭据服务时回退 process.env.DEEPSEEK_API_KEY
+   */
+  const resolveApiKey = async (): Promise<string> => {
+    const configured = config.apiKey?.trim()
+    if (configured !== undefined && configured !== '') return configured
+    const credentials = ctx.get('credentials') as CredentialsService | undefined
+    if (credentials !== undefined) {
+      const resolved = await credentials.resolve('DEEPSEEK_API_KEY')
+      const value = resolved?.value.trim()
+      if (value !== undefined && value !== '') return value
+    }
+    return (process.env.DEEPSEEK_API_KEY ?? '').trim()
+  }
   const baseUrl = normalizeBaseUrl(config.baseUrl)
 
   ctx.effect(() => ctx.webServer.register({
@@ -306,13 +322,13 @@ export function apply(ctx: Context, config: Config = {}): void {
     path: '/dsh-usage-chart/balance',
     async handler(req: IncomingMessage, res: ServerResponse) {
       if (!guardRequest(req, res)) return
-      const apiKey = resolveApiKey()
+      const apiKey = await resolveApiKey()
       if (apiKey === '') {
         writeJson(res, 200, {
           ok: false,
           apiKeyConfigured: false,
           reason: 'no-api-key',
-          message: '未配置 DEEPSEEK_API_KEY（或插件 config.apiKey）。余额显示为 –，点击可重试。',
+          message: '未配置 DEEPSEEK_API_KEY（或插件 config.apiKey / 网页端 API Key）。余额显示为 –，点击可重试。',
         } satisfies BalanceResponse)
         return
       }

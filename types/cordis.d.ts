@@ -61,13 +61,22 @@ export interface SessionStoreService {
   list(): { id: string; events: readonly SessionEventLike[] }[]
 }
 
-/** cordis Context（本插件用到的面：effect + webServer + slots + sessions + locale；均因 inject 声明而保证存在）。 */
+/** dsh-credentials 的凭据服务（本插件用到的面：按引用解析密钥值）。 */
+export interface CredentialsService {
+  /** 解析一个凭据引用（如 'DEEPSEEK_API_KEY'）为当前值；未配置返回 undefined。 */
+  resolve(ref: string): Promise<{ value: string; source?: string } | undefined>
+}
+
+/** cordis Context（本插件用到的面：effect + get + webServer + slots + sessions + locale）。 */
 export interface Context {
   /** 注册一个资源释放器，插件卸载时执行。 */
   effect(disposer: () => (() => void) | void, label?: string): void
+  /** 读取服务（反射层）：不要求 inject 声明；服务不存在返回 undefined。 */
+  get(name: string, strict?: boolean): unknown
   webServer: WebServer
   slots: SlotRegistry
   sessions: SessionStoreService
   locale: LocaleService
+  /** 可选服务（如 credentials）一律经 ctx.get 读取——未 inject 的服务属性访问会抛错。 */
   [key: string]: unknown
 }

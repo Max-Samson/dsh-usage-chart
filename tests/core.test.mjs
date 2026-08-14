@@ -26,6 +26,7 @@ function mountedRoutes(events = []) {
   const routes = new Map()
   apply({
     effect(setup) { setup() },
+    get() { return undefined },
     webServer: {
       register(route) { routes.set(route.path, route); return () => {} },
     },
@@ -102,4 +103,44 @@ test('mounted Host routes enforce method and browser-origin guards', async () =>
   assert.equal(okResponse.status, 200)
   assert.equal(okResponse.headers['Cache-Control'], 'no-store')
   assert.equal(JSON.parse(okResponse.body).ok, true)
+})
+
+/** 余额路由：baseUrl 指向回环拒绝端口，避免真实网络请求；用 apiKeyConfigured 判断密钥是否解析到。 */
+async function balanceResponse(extraCtx = {}, config = {}) {
+  const routes = new Map()
+  apply({
+    effect(setup) { setup() },
+    get(name) { return name === 'credentials' ? extraCtx.credentials : undefined },
+    webServer: { register(route) { routes.set(route.path, route); return () => {} } },
+    sessions: { get() { return undefined } },
+    ...extraCtx,
+  }, { baseUrl: 'http://127.0.0.1:1', ...config })
+  const route = routes.get('/dsh-usage-chart/balance')
+  const recorder = responseRecorder()
+  await route.handler({ method: 'GET', url: '/dsh-usage-chart/balance', headers: { host: 'localhost:3000' } }, recorder)
+  return { recorder, body: JSON.parse(recorder.body) }
+}
+
+test('balance route resolves the API key through the credentials service', async () => {
+  const { recorder, body } = await balanceResponse({
+    credentials: { resolve: async (ref) => ref === 'DEEPSEEK_API_KEY' ? { value: 'sk-test', source: 'user' } : undefined },
+  })
+  assert.equal(recorder.status, 200)
+  assert.equal(body.apiKeyConfigured, true, 'credentials 服务提供的密钥应被解析到')
+  assert.equal(body.reason, 'request-failed') // 回环端口拒绝连接：证明拿到了密钥并尝试了请求
+})
+
+test('balance route prefers config.apiKey over the credentials service', async () => {
+  const { body } = await balanceResponse(
+    { credentials: { resolve: async () => { throw new Error('should not be called') } } },
+    { apiKey: 'sk-from-config' },
+  )
+  assert.equal(body.apiKeyConfigured, true)
+})
+
+test('balance route reports no-api-key when no key is configured anywhere', async () => {
+  const { recorder, body } = await balanceResponse()
+  assert.equal(recorder.status, 200)
+  assert.equal(body.apiKeyConfigured, false)
+  assert.equal(body.reason, 'no-api-key')
 })
