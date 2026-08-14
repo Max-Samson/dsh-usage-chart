@@ -17,7 +17,7 @@ Both variants follow the DSH theme and in-app language setting.
 > Both screenshots use fictional demo data only. They contain no real session content,
 > token counts, costs, balances, or API keys.
 
-The plugin adds a compact indicator below the conversation composer. It shows input/output tokens, cache-hit ratio, estimated cost, active model, and DeepSeek account balance. Click it to open a zero-dependency SVG dashboard with per-turn usage history.
+The plugin adds a compact indicator below the conversation composer. It shows input/output tokens, cache-hit ratio, estimated cost, active model, a slim context-pressure bar, and DeepSeek account balance. Click it to open a zero-dependency SVG dashboard with per-turn usage history — including a cost view, a duration overlay, anomaly markers, an explainer tooltip (tokens + cost + model + duration/TTFT/TPS + end reason), and a dismissible `≈ $0.00xx` badge on each assistant message.
 
 The interface supports Chinese and English and follows the DSH in-app language setting. Browser language seeds the initial display only when the Host has not exposed a setting yet. Language changes are applied without reloading the plugin.
 
@@ -43,7 +43,7 @@ or **remove then re-add**:
 
 ```sh
 # Option ①: pin the target version explicitly
-dsh plugin --profile web add dsh-usage-chart@0.1.1
+dsh plugin --profile web add dsh-usage-chart@0.2.0
 # Option ②: remove, then re-add (back to latest)
 dsh plugin --profile web remove dsh-usage-chart
 dsh plugin --profile web add dsh-usage-chart
@@ -54,7 +54,7 @@ Then restart DSH Web.
 > ⚠️ **No global `dsh` installed (`dsh: command not found` / PowerShell
 > `The term 'dsh' is not recognized…`)?** Prefix every `dsh` above with
 > `npx --yes @deepseek-ai/dsh`, e.g.
-> `npx --yes @deepseek-ai/dsh plugin --profile web add dsh-usage-chart@0.1.1`
+> `npx --yes @deepseek-ai/dsh plugin --profile web add dsh-usage-chart@0.2.0`
 > (see FAQ item 1).
 
 ### Option 2: install from GitHub (source build)
@@ -116,6 +116,26 @@ export DEEPSEEK_API_KEY=sk-...
 dsh web --profile web
 ```
 
+### Price overrides (optional, v0.2+)
+
+Costs are resolved with priority **user override file > builtin list price > fallback
+estimate** (prices are resolved only on the Host; the client consumes the
+`/dsh-usage-chart/pricing` snapshot — a single source of truth, ADR 2). The default
+override file is `$DSH_HOME/data/dsh-usage-chart/pricing.json` (or `~/.dsh/...` without
+`DSH_HOME`); both flat and `{ "models": { … } }` shapes are accepted and changes are
+picked up live:
+
+```json
+{
+  "deepseek-v4-flash": { "cacheMissInput": 0.14, "cacheHitInput": 0.0028, "output": 0.28, "verifiedAt": 1755100800000 }
+}
+```
+
+`verifiedAt` (epoch ms) is optional and shown as the verification date in the panel.
+Models not covered anywhere are explicitly marked "Unpriced model" in the UI — never
+silently billed as zero. To point at another file, set `config.pricingFile` in
+`cordis.patch.yml`.
+
 ### Uninstall
 
 > ⚠️ **No global `dsh` installed (`dsh: command not found` / PowerShell
@@ -165,8 +185,8 @@ for the maintainer to publish.
 | Value | Source | Notes |
 |---|---|---|
 | Token usage | DSH `tokenUsage` / `contextPressure` projections | Session-scoped, updated by the adapter |
-| Per-turn history | DSH Host session event log | Falls back to page-observed deltas when unavailable |
-| Cost | Published DeepSeek price × reported usage | Estimate, not an invoice |
+| Per-round history | DSH Host session event log (`/usage` fold) | Duration / TTFT / TPS / model / end reason / per-round cost; falls back to page-observed deltas when unavailable |
+| Cost | Published DeepSeek price (builtin + optional `pricing.json` override) × reported usage | Estimate, not an invoice; resolved once on the Host, consumed via the `/pricing` snapshot |
 | Balance | DeepSeek `GET /user/balance` | Proxied by the Host with `no-store` responses |
 
 ## Development
@@ -179,7 +199,7 @@ npm run verify
 npm pack --dry-run
 ```
 
-The package contains two DSH halves: `lib/index.js` for the Node Host and `lib/client.js` for the Web client module loader. Type declarations are emitted to `lib/types`.
+The package contains two DSH halves: `lib/index.js` for the Node Host and `lib/client.js` for the Web client module loader. Type declarations are emitted to `lib/types`. `lib/client-test.js` is a small ESM bundle of client-side pure modules (e.g. the anomaly detector) consumed only by `tests/*.test.mjs`.
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull request. Please report vulnerabilities privately as described in [SECURITY.md](./SECURITY.md).
 
@@ -193,7 +213,7 @@ For the first release, complete npm account verification and run `npm publish --
 |---|---|
 | DSH | ≥ 0.1.0-rc.6; built against the 0.1.x API |
 | Node.js | ≥ 20 |
-| Web UI | React 18 and `conversation.composer.dock` |
+| Web UI | React 18, `conversation.composer.dock` and `conversation.chat.assistant-actions` |
 | OS | macOS, Linux, Windows; no native dependencies |
 
 ## Community and open source

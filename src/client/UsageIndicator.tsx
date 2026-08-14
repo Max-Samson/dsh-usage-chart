@@ -1,15 +1,17 @@
 /**
  * 输入框下方的用量指示器（挂载于 'conversation.composer.dock'）。
- * 一行展示：输入 / 输出 / 缓存命中率 / 成本估算 / 模型 / 余额，点击展开可视化面板。
+ * 一行展示：输入 / 输出 / 缓存命中率 / 成本估算 / 模型 / 余额 + 细上下文压力条，
+ * 点击展开可视化面板。成本只消费 /pricing 快照（ADR 2），快照未就绪时隐藏成本位。
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { TokenUsageBuckets } from '../pricing.ts'
-import { billedInputTokens, cacheHitPercent, estimateCost, formatTokens, formatUsd } from '../pricing.ts'
+import type { TokenUsageBuckets } from '../pricing/calc.ts'
+import { billedInputTokens, cacheHitPercent, formatTokens, formatUsd } from '../pricing/calc.ts'
 import { currencySymbol, useBalance } from './balance.ts'
-import type { TurnUsage } from './charts.tsx'
 import { getUiCopy, useUiLocale } from './i18n.ts'
-import { UsagePanel } from './UsagePanel.tsx'
+import { resolveCost, usePricing } from './pricing-api.ts'
+import { useObservedRounds } from './rounds/observed.ts'
 import { snapshotNodes, type ConversationNode, type ConversationSnapshot } from './snapshot.ts'
+import { UsagePanel } from './UsagePanel.tsx'
 
 export interface DockUsageProps {
   /** 会话快照选择器（framework 标准套件）。 */
@@ -21,73 +23,6 @@ export interface DockUsageProps {
   input: unknown
 }
 
-interface TurnAcc {
-  turns: readonly TurnUsage[]
-  open: TurnUsage
-}
-
-const zero = (): TokenUsageBuckets => ({ uncachedInputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 })
-const anyTokens = (b: TokenUsageBuckets): boolean => b.uncachedInputTokens + b.outputTokens + b.cacheReadTokens + b.cacheWriteTokens > 0
-
-/**
- * 每轮用量累积：投影每次更新时把增量记到「当前轮」，轮次推进时封存上一轮。
- * 增量单调且按 (turn, step) 有序（token-meter 的不变量），归因准确；
- * 仅覆盖本页面加载以来的观测，语义在面板中如实标注。
- */
-function useTurnUsage(
-  totals: TokenUsageBuckets | undefined,
-  nodes: readonly ConversationNode[],
-): TurnAcc {
-  const ref = useRef<{ prev: TokenUsageBuckets | undefined; sealed: Map<number, TokenUsageBuckets>; openTurn: number; open: TokenUsageBuckets }>({
-    prev: undefined,
-    sealed: new Map(),
-    openTurn: -1,
-    open: zero(),
-  })
-
-  const currentTurn = useMemo(() => {
-    let m = 0
-    for (const n of nodes) if (n.turn > m) m = n.turn
-    return m
-  }, [nodes])
-
-  useLayoutEffect(() => {
-    const r = ref.current
-    if (totals === undefined) return
-    if (r.prev === undefined) {
-      r.prev = totals
-      r.openTurn = currentTurn
-      return
-    }
-    const delta: TokenUsageBuckets = {
-      uncachedInputTokens: Math.max(0, totals.uncachedInputTokens - r.prev.uncachedInputTokens),
-      outputTokens: Math.max(0, totals.outputTokens - r.prev.outputTokens),
-      cacheReadTokens: Math.max(0, totals.cacheReadTokens - r.prev.cacheReadTokens),
-      cacheWriteTokens: Math.max(0, totals.cacheWriteTokens - r.prev.cacheWriteTokens),
-    }
-    if (currentTurn !== r.openTurn) {
-      if (anyTokens(r.open)) r.sealed.set(r.openTurn, r.open)
-      r.openTurn = currentTurn
-      r.open = zero()
-    }
-    if (anyTokens(delta)) {
-      r.open.uncachedInputTokens += delta.uncachedInputTokens
-      r.open.outputTokens += delta.outputTokens
-      r.open.cacheReadTokens += delta.cacheReadTokens
-      r.open.cacheWriteTokens += delta.cacheWriteTokens
-    }
-    r.prev = totals
-  }, [totals, currentTurn])
-
-  return useMemo(() => {
-    const turns: TurnUsage[] = []
-    for (const [turn, buckets] of ref.current.sealed) turns.push({ turn, buckets })
-    turns.sort((a, b) => a.turn - b.turn)
-    const open = { turn: ref.current.openTurn, buckets: { ...ref.current.open } }
-    return { turns, open }
-  }, [totals, currentTurn])
-}
-
 function deriveModel(nodes: readonly ConversationNode[]): string | undefined {
   for (let i = nodes.length - 1; i >= 0; i--) {
     const n = nodes[i]
@@ -96,6 +31,12 @@ function deriveModel(nodes: readonly ConversationNode[]): string | undefined {
     if (n.requestConfig?.model !== undefined && n.requestConfig.model !== '') return n.requestConfig.model
   }
   return undefined
+}
+
+function pressurePercent(pressure: { pressureTokens?: number; projectedTokens?: number; contextWindow?: number } | undefined): number | null {
+  const used = pressure?.projectedTokens ?? pressure?.pressureTokens
+  if (used === undefined || pressure?.contextWindow === undefined || pressure.contextWindow <= 0) return null
+  return Math.min(100, Math.round((used / pressure.contextWindow) * 100))
 }
 
 /** Solar Chart Bold, supplied project asset. Uses currentColor for both DSH themes. */
@@ -121,12 +62,14 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
   const pressure = useProjection('contextPressure') as { pressureTokens?: number; projectedTokens?: number; contextWindow?: number } | undefined
   const nodes = useSession((s) => snapshotNodes(s))
   const model = useMemo(() => deriveModel(nodes), [nodes])
-  const acc = useTurnUsage(totals, nodes)
+  const observedRounds = useObservedRounds(totals, nodes)
   const { status: balanceStatus, data: balanceData, load: loadBalance } = useBalance(true)
+  const pricing = usePricing()
 
   const hasTokens = totals !== undefined && (billedInputTokens(totals) > 0 || totals.outputTokens > 0)
-  const cost = totals !== undefined ? estimateCost(totals, model) : undefined
+  const cost = totals !== undefined && pricing.table !== null ? resolveCost(pricing.table, totals, model) : undefined
   const cacheHit = totals !== undefined ? cacheHitPercent(totals) : null
+  const pressurePct = pressurePercent(pressure)
   const balance = balanceData?.balances?.[0]
 
   // 计算悬浮面板锚点：贴在指示器行上方、左右对齐输入框。
@@ -182,7 +125,7 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
     parts.push({ key: 'output', text: `${copy.output} ${formatTokens(totals.outputTokens)}` })
     if (cacheHit !== null) parts.push({ key: 'cache', text: `${copy.cache} ${cacheHit}%` })
   }
-  if (cost !== undefined) parts.push({ key: 'cost', text: `${copy.cost} ${cost.estimated ? '≈' : ''}${formatUsd(cost.usd)}`, estimated: true })
+  if (cost !== undefined) parts.push({ key: 'cost', text: `${copy.cost} ${cost.estimated ? '≈' : ''}${formatUsd(cost.split.totalUsd)}`, estimated: cost.estimated })
   if (model !== undefined) parts.push({ key: 'model', text: model.replace(/^deepseek-/, '') })
 
   const balanceLabel = balanceStatus === 'loading' || (balanceStatus === 'ok' && balance === undefined)
@@ -216,6 +159,17 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
         </span>
       ))}
       {parts.length > 0 && <span className="duc-sep" aria-hidden>·</span>}
+      {pressurePct !== null && (
+        <span
+          className="duc-pressure"
+          role="img"
+          aria-label={copy.pressureBarLabel(`${pressurePct}%`)}
+          title={copy.pressureBarTitle(pressurePct)}
+          data-level={pressurePct >= 90 ? 'critical' : pressurePct >= 70 ? 'high' : undefined}
+        >
+          <i style={{ width: `${pressurePct}%` }} />
+        </span>
+      )}
       <button
         type="button"
         className="duc-balance"
@@ -234,7 +188,7 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
             locale={locale}
             totals={totals ?? { uncachedInputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }}
             model={model}
-            observedTurns={[...acc.turns, acc.open]}
+            observedRounds={observedRounds}
             pressure={pressure}
             balanceStatus={balanceStatus}
             balanceData={balanceData}

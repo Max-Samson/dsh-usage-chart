@@ -1,26 +1,61 @@
 /**
  * 宿主（Node）半区：dsh-usage-chart
  *
- * 在同源 HTTP 服务上注册两个路由：
+ * 在同源 HTTP 服务上注册三个路由：
  *  - `/dsh-usage-chart/balance` — 代理 DeepSeek 官方 `GET /user/balance`
  *    （浏览器直连会被 CORS 拦截，且 API Key 不应暴露给浏览器）。
  *  - `/dsh-usage-chart/usage`   — 读取会话日志（adapter 上报的完整事件流），
- *    折叠出每轮真实 token 用量（与 token-meter 相同的折叠语义）。
+ *    经 RoundFold 折叠出每轮用量明细（token 四桶 + 耗时/TTFT/TPS +
+ *    模型归因 + 结束原因 + 每轮成本分拆）。
+ *  - `/dsh-usage-chart/pricing` — 价格解析快照（内置刊例价 + 用户覆盖
+ *    pricing.json），client 实时成本计算的唯一价格输入（ADR 2）。
  */
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import type { Context, CredentialsService } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 
+// ── 共享纯计算（client 同源 bundle）────────────────────────────────────────
 export {
-  PRICING,
   ZERO_BUCKETS,
   billedInputTokens,
   cacheHitPercent,
-  estimateCost,
+  costSplit,
+  formatDuration,
   formatTokens,
   formatUsd,
-  pricingFor,
-} from './pricing.ts'
-export type { ModelPricing, TokenUsageBuckets } from './pricing.ts'
+} from './pricing/calc.ts'
+export type { CostSplit, ModelPricing, TokenUsageBuckets } from './pricing/calc.ts'
+
+// ── 价格来源接缝与解析器（host 专用）───────────────────────────────────────
+import {
+  BUILTIN_VERIFIED_AT,
+  FALLBACK_PRICING,
+  filePricingSource,
+} from './pricing/source.ts'
+import { createPricingResolver } from './pricing/resolve.ts'
+import { foldRounds } from './usage/rounds.ts'
+
+export {
+  BUILTIN_PRICING,
+  BUILTIN_VERIFIED_AT,
+  FALLBACK_PRICING,
+  builtinPricingSource,
+  filePricingSource,
+  loadPricingFile,
+  normalizeFileEntry,
+  parsePricingFile,
+} from './pricing/source.ts'
+export type { FilePricingEntry, PricingFileShape, PricingSource, PricingSourceId } from './pricing/source.ts'
+export { createPricingResolver, estimateCost, pricingFor } from './pricing/resolve.ts'
+export type { PricingResolver, ResolvedPricing } from './pricing/resolve.ts'
+
+/** v0.1 兼容别名：内置刊例价表。 */
+export { BUILTIN_PRICING as PRICING } from './pricing/source.ts'
+
+// ── RoundFold（host 折叠，权威基准）────────────────────────────────────────
+export { foldRounds, foldTurnUsage } from './usage/rounds.ts'
+export type { FoldResult, RoundCost, SessionEventLike, UsageRound } from './usage/rounds.ts'
 
 export const name = 'dsh-usage-chart'
 
@@ -32,6 +67,11 @@ export interface Config {
   apiKey?: string
   /** 可选：官方 API 基地址。 */
   baseUrl?: string
+  /**
+   * 可选：价格覆盖文件（pricing.json）路径。留空时默认
+   * `$DSH_HOME/data/dsh-usage-chart/pricing.json`（无 DSH_HOME 时 `~/.dsh/...`）。
+   */
+  pricingFile?: string
 }
 
 interface BalanceInfo {
@@ -51,32 +91,20 @@ export interface BalanceResponse {
   balances?: BalanceInfo[]
 }
 
-/** token 用量四桶（与 client 侧 TokenUsageBuckets 一致）。 */
-export interface UsageBuckets {
-  uncachedInputTokens: number
-  outputTokens: number
-  cacheReadTokens: number
-  cacheWriteTokens: number
-}
-
-export interface UsageTurn {
-  turn: number
-  buckets: UsageBuckets
-}
-
-/** 会话日志事件的最小形状（assistant/chunk 与 assistant/message 携带 turn/step/usage）。 */
-export interface SessionEventLike {
-  type: string
-  seq: number
-  data: {
-    turn?: number
-    step?: number
-    usage?: unknown
-    chunk?: { type?: string; usage?: unknown }
-  }
-}
-
 const DEFAULT_BASE_URL = 'https://api.deepseek.com'
+
+/** 默认价格覆盖文件：`$DSH_HOME/data/dsh-usage-chart/pricing.json`。 */
+export function defaultPricingFile(env: NodeJS.ProcessEnv = process.env, home = homedir()): string {
+  const configured = env.DSH_HOME?.trim()
+  const root = configured !== undefined && configured !== '' ? expandHome(configured, home) : join(home, '.dsh')
+  return join(root, 'data', 'dsh-usage-chart', 'pricing.json')
+}
+
+function expandHome(value: string, home: string): string {
+  if (value === '~') return home
+  if (value.startsWith('~/')) return join(home, value.slice(2))
+  return value
+}
 
 /**
  * Normalize and validate the upstream API URL.
@@ -144,92 +172,6 @@ function writeJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(payload)
 }
 
-function zeroBuckets(): UsageBuckets {
-  return { uncachedInputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
-}
-
-function addInto(target: UsageBuckets, other: UsageBuckets): void {
-  target.uncachedInputTokens += other.uncachedInputTokens
-  target.outputTokens += other.outputTokens
-  target.cacheReadTokens += other.cacheReadTokens
-  target.cacheWriteTokens += other.cacheWriteTokens
-}
-
-function tokenCount(value: unknown): number | null {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null
-}
-
-function bucketsOf(usage: unknown): UsageBuckets | null {
-  if (typeof usage !== 'object' || usage === null) return null
-  const value = usage as Record<string, unknown>
-  const inputTokens = tokenCount(value.inputTokens)
-  const outputTokens = tokenCount(value.outputTokens)
-  const cacheReadTokens = value.cacheReadTokens === undefined ? 0 : tokenCount(value.cacheReadTokens)
-  const cacheWriteTokens = value.cacheWriteTokens === undefined ? 0 : tokenCount(value.cacheWriteTokens)
-  if (inputTokens === null || outputTokens === null || cacheReadTokens === null || cacheWriteTokens === null) return null
-  return {
-    uncachedInputTokens: inputTokens,
-    outputTokens,
-    cacheReadTokens,
-    cacheWriteTokens,
-  }
-}
-
-/**
- * 从会话日志折叠每轮用量（与 token-meter 相同的语义）：
- *  - 用量来自 `assistant/chunk`（chunk.type === 'usage'）与 `assistant/message`；
- *  - 同一 (turn, step) 的重复样本替换而不是累加（chunk 早样 → message 终样）；
- *  - 步骤按日志顺序推进（不变量：后续步骤不会回补更早步骤的用量）。
- * 返回按轮次分组的桶与累计值。
- */
-export function foldTurnUsage(events: readonly SessionEventLike[]): {
-  totals: UsageBuckets
-  turns: UsageTurn[]
-} {
-  const totals = zeroBuckets()
-  const perTurn = new Map<number, UsageBuckets>()
-  let currentKey = ''
-  let currentTurn = -1
-  let stepBuckets: UsageBuckets | null = null
-
-  const commitStep = (turn: number, buckets: UsageBuckets): void => {
-    const turnBuckets = perTurn.get(turn) ?? zeroBuckets()
-    addInto(turnBuckets, buckets)
-    perTurn.set(turn, turnBuckets)
-    addInto(totals, buckets)
-  }
-
-  for (const event of events) {
-    let usage: unknown
-    let turn: number | undefined
-    let step: number | undefined
-    if (event.type === 'assistant/chunk' && event.data?.chunk?.type === 'usage') {
-      ;({ turn, step } = event.data)
-      usage = event.data.chunk.usage
-    } else if (event.type === 'assistant/message' && event.data?.usage !== undefined) {
-      ;({ turn, step } = event.data)
-      usage = event.data.usage
-    }
-    if (usage === undefined || turn === undefined || step === undefined) continue
-    const sample = bucketsOf(usage)
-    if (sample === null) continue
-    const key = `${turn}:${step}`
-    if (currentKey !== key) {
-      if (stepBuckets !== null) commitStep(currentTurn, stepBuckets)
-      currentKey = key
-      currentTurn = turn
-      stepBuckets = zeroBuckets()
-    }
-    stepBuckets = sample
-  }
-  if (stepBuckets !== null) commitStep(currentTurn, stepBuckets)
-
-  const turns = [...perTurn.entries()]
-    .map(([turn, buckets]) => ({ turn, buckets }))
-    .sort((a, b) => a.turn - b.turn)
-  return { totals, turns }
-}
-
 /** 拉取官方余额。任何失败都返回结构化错误，不抛异常。 */
 async function fetchBalance(apiKey: string, baseUrl: string): Promise<BalanceResponse> {
   const controller = new AbortController()
@@ -290,7 +232,7 @@ async function fetchBalance(apiKey: string, baseUrl: string): Promise<BalanceRes
 }
 
 /**
- * 插件入口：注册余额代理路由。
+ * 插件入口：注册余额代理 / 用量折叠 / 价格快照路由。
  * @param ctx - 宿主 Context（cordis）。
  * @param config - 行配置（cordis.patch.yml 的 config）。
  */
@@ -316,6 +258,12 @@ export function apply(ctx: Context, config: Config = {}): void {
     return (process.env.DEEPSEEK_API_KEY ?? '').trim()
   }
   const baseUrl = normalizeBaseUrl(config.baseUrl)
+
+  // 价格解析（单一真相）：用户覆盖文件（含变更监听）→ 内置刊例价 → 回退。
+  const pricingFile = config.pricingFile?.trim() || defaultPricingFile()
+  const fileSource = filePricingSource(pricingFile)
+  const resolver = createPricingResolver(fileSource)
+  ctx.effect(() => fileSource.dispose(), 'dsh-usage-chart: pricing file watcher')
 
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
@@ -353,8 +301,26 @@ export function apply(ctx: Context, config: Config = {}): void {
         writeJson(res, 404, { ok: false, reason: 'session-not-found' })
         return
       }
-      const { totals, turns } = foldTurnUsage(session.events as readonly SessionEventLike[])
-      writeJson(res, 200, { ok: true, sessionId, totals, turns })
+      const { totals, rounds } = foldRounds(session.events as readonly import('./usage/rounds.ts').SessionEventLike[], resolver)
+      writeJson(res, 200, { ok: true, sessionId, totals, rounds })
     },
   }), 'dsh-usage-chart: usage route')
+
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'exact',
+    path: '/dsh-usage-chart/pricing',
+    async handler(req: IncomingMessage, res: ServerResponse) {
+      if (!guardRequest(req, res)) return
+      writeJson(res, 200, {
+        ok: true,
+        pricingFile,
+        builtinVerifiedAt: BUILTIN_VERIFIED_AT,
+        fallback: {
+          pricing: FALLBACK_PRICING,
+          verifiedAt: BUILTIN_VERIFIED_AT,
+        },
+        models: resolver.list(),
+      })
+    },
+  }), 'dsh-usage-chart: pricing route')
 }

@@ -2,6 +2,49 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-08-15
+
+### Added
+
+- **Per-round cost explainability (v0.2, see `docs/ROADMAP.md`)**: the host fold
+  (`RoundFold`, `src/usage/rounds.ts`) now derives per-round duration
+  (`turn/start → turn/end`), TTFT (start → first usage sample), output throughput
+  (tokens/s), model attribution (`request/context` → `request/header` → cross-round
+  carry-forward), end reason, and a per-round cost split (input / cache-read / output ×
+  unit price).
+- **Pricing governance**: `src/pricing.ts` is split into a pure math module
+  (`pricing/calc.ts`, bundled by both halves) and a host-only `PricingSource` seam
+  (`pricing/source.ts` — builtin list with a verification date + user-override
+  `pricing.json` file adapter with change watching) plus a `PricingResolver`
+  (`pricing/resolve.ts`, priority file > builtin > fallback, unknown models explicitly
+  marked). New `/dsh-usage-chart/pricing` route exposes the resolved snapshot — the
+  client's **only** price input (ADR 2); the old bundled pricing constants no longer
+  drift from host resolution.
+- **`/usage` route** now returns `rounds` (with cost/timing/model/endReason) instead of
+  bare `turns` (`foldTurnUsage` kept as a v0.1-compatible wrapper).
+- **RoundBars cost view**: a third chart mode stacks bars by cost (bucket × unit
+  price); a duration polyline overlays bar tops; anomalously expensive rounds
+  (relative to the previous N rounds, `src/client/diagnose/anomaly.ts`) get a warning
+  marker with attributed reason chips; a per-round cache-hit mini tick sits under the
+  baseline; the tooltip became an explainer card (tokens + cost + model + duration +
+  TTFT + TPS + cache hit + end reason + anomaly chips).
+- **Cost badge**: a dismissible `≈ $0.00xx` badge per assistant message
+  (`conversation.chat.assistant-actions` slot, data from the host `/usage` history).
+- **Dock context pressure bar**: slim `contextPressure` bar in the indicator
+  (green → amber → red as occupancy rises).
+- **Tests**: `tests/rounds.test.mjs` (fold timing/TTFT/TPS/model/cost + route),
+  `tests/pricing.test.mjs` (resolver priority, file source with temp dir, unknown
+  marking + route), `tests/anomaly.test.mjs` (spike flagging and attribution);
+  28 tests pass via `npm run verify`.
+- **Configuration**: optional `config.pricingFile` overrides the default
+  `$DSH_HOME/data/dsh-usage-chart/pricing.json` (falls back to `~/.dsh/...`).
+
+### Fixed
+
+- Cost estimates are now single-sourced: real-time indicator cost and panel cost both
+  consume the `/pricing` snapshot; the price source, verification date, and
+  unknown-model marker are shown in the panel.
+
 ## [0.1.1] - 2026-08-14
 
 ### Added

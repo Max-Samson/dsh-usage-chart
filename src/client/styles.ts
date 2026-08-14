@@ -21,6 +21,9 @@ export const PLUGIN_CSS = `
   --duc-hit: var(--dsw-static-cyan-400, #45a9c7);
   --duc-output: var(--dsw-static-green-450, #43b96f);
   --duc-write: var(--dsw-static-amber-450, #d99a2b);
+  /* v0.2：异常警示色 + 耗时叠加色 */
+  --duc-anomaly: var(--dsw-static-red-500, #d8453c);
+  --duc-duration: var(--dsw-static-violet-450, #8f6bd8);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -183,6 +186,108 @@ body[data-ds-dark-theme] .duc-popover { box-shadow: 0 16px 40px rgba(0, 0, 0, 0.
 .duc-chart-turn:focus-visible .duc-chart-current-band,
 .duc-chart-turn:focus-visible .duc-chart-segment:first-of-type { stroke: var(--duc-miss); stroke-width: 2; }
 
+/* v0.2：耗时叠加层（柱顶点线） */
+.duc-chart-duration polyline { stroke: var(--duc-duration); stroke-width: 1.2; stroke-dasharray: 3 2; opacity: 0.9; }
+.duc-chart-duration-dot { fill: var(--duc-duration); stroke: var(--dsw-alias-bg-layer-2, #fff); stroke-width: 1; }
+
+/* v0.2：异常轮次标记（警示描边 + 角标） */
+.duc-chart-turn.duc-chart-anomaly .duc-chart-segment { filter: saturate(1.15); }
+.duc-chart-turn.duc-chart-anomaly.is-active .duc-chart-segment { filter: brightness(1.05) saturate(1.25); }
+.duc-chart-turn.duc-chart-anomaly .duc-chart-flag { fill: var(--duc-anomaly); }
+.duc-chart-turn.duc-chart-anomaly:focus-visible .duc-chart-current-band,
+.duc-chart-turn.duc-chart-anomaly:focus-visible .duc-chart-segment:first-of-type { stroke: var(--duc-anomaly); stroke-width: 2; }
+
+/* v0.2：缓存命中迷你趋势（柱底小刻度） */
+.duc-chart-hit-tick { opacity: 0.85; }
+
+/* v0.2：解释卡 Tooltip（加宽 + 元信息行 + 异常 chip） */
+.duc-chart-tooltip-wide { width: 212px; }
+.duc-chart-tooltip-meta {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 10px;
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 1px solid var(--dsw-alias-border-l3, rgba(127, 127, 127, 0.2));
+  color: var(--dsw-alias-label-secondary, #5f6368);
+  font-size: 9.5px;
+}
+.duc-chart-tooltip-meta span { display: contents; }
+.duc-chart-tooltip-meta b {
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary, #202124);
+  font-weight: 600;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.duc-chart-tooltip-flags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--dsw-alias-border-l3, rgba(127, 127, 127, 0.2)); }
+.duc-flag-chip {
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.14));
+  color: var(--dsw-alias-label-secondary, #5f6368);
+  font-size: 9px;
+  font-weight: 600;
+}
+.duc-flag-chip:first-child { background: color-mix(in srgb, var(--duc-anomaly) 16%, transparent); color: var(--duc-anomaly); }
+.duc-flag-chip-reason { border: 1px solid color-mix(in srgb, var(--duc-anomaly) 35%, transparent); }
+
+/* v0.2：未定价模型 chip（面板成本说明） */
+.duc-unknown-chip {
+  display: inline-block;
+  margin: 0 4px 0 6px;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--duc-write) 45%, transparent);
+  border-radius: 8px;
+  color: var(--duc-write);
+  font-size: 9.5px;
+  font-weight: 600;
+}
+
+/* v0.2：每轮成本徽章（assistant 消息尾部，可关闭） */
+.duc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin: 0;
+  padding: 0 7px;
+  border: 1px solid var(--dsw-alias-border-l3, rgba(127, 127, 127, 0.3));
+  border-radius: 9px;
+  background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.08));
+  color: var(--dsw-alias-label-secondary, rgba(255, 255, 255, 0.62));
+  font: inherit;
+  font-size: 10px;
+  line-height: 16px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.duc-badge:hover { color: var(--dsw-alias-label-primary, rgba(255, 255, 255, 0.9)); }
+.duc-badge:focus-visible { outline: 2px solid var(--duc-miss); outline-offset: 1px; }
+.duc-badge-est { opacity: 0.82; }
+.duc-badge-unknown { border-color: color-mix(in srgb, var(--duc-write) 50%, transparent); }
+.duc-badge-mark { color: var(--duc-write); font-size: 9px; }
+
+/* v0.2：Dock 细上下文压力条 */
+.duc-pressure {
+  display: inline-block;
+  width: 44px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.2));
+  cursor: default;
+}
+.duc-pressure i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--duc-output);
+  transition: width 240ms ease;
+}
+.duc-pressure[data-level="high"] i { background: var(--duc-write); }
+.duc-pressure[data-level="critical"] i { background: var(--duc-anomaly); }
+
 .duc-chart-tooltip {
   position: absolute;
   z-index: 2;
@@ -321,6 +426,7 @@ body[data-ds-dark-theme] .duc-chart-tooltip { box-shadow: 0 10px 24px rgba(0, 0,
   .duc-toggle:active,
   .duc-refresh:active { transform: none; }
   .duc-chart-segment { transition: none; }
+  .duc-pressure i { transition: none; }
 }
 `
 

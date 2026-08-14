@@ -1,12 +1,14 @@
 /**
- * 客户端半区入口：向 'conversation.composer.dock' 注册用量指示器。
- * 挂载后即出现在输入框下方（与官方 StatsLine 同槽位，order 1 排在其后）。
+ * 客户端半区入口：向 'conversation.composer.dock' 注册用量指示器，
+ * 向 'conversation.chat.assistant-actions' 注册每轮成本徽章。
+ * 指示器挂载后即出现在输入框下方（与官方 StatsLine 同槽位，order 1 排在其后）。
  *
  * 本地化（DSH locale 体系）：订阅 `locale` 服务的活动语言快照（getLocale +
  * subscribe），写入 i18n.ts 的 store；组件经 useUiLocale() 读取，随「设置 →
  * 语言」实时切换。可见文案只维护在 i18n.ts，避免平台注册字典与组件字典漂移。
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import { CostBadge } from './badge/CostBadge.tsx'
 import { UsageIndicator } from './UsageIndicator.tsx'
 import { injectPluginCss } from './styles.ts'
 import { setUiLocale } from './i18n.ts'
@@ -35,5 +37,15 @@ export function apply(ctx: ClientContext): void {
       registrant: 'dsh-usage-chart',
     },
     UsageIndicator,
+  )
+
+  ctx.slots.register(
+    {
+      name: 'conversation.chat.assistant-actions',
+      id: 'dsh-usage-chart',
+      order: 1,
+      registrant: 'dsh-usage-chart',
+    },
+    CostBadge,
   )
 }

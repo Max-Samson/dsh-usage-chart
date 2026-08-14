@@ -7,7 +7,7 @@
 /** 会话 id（wire 上即字符串）。 */
 export type SessionId = string
 
-/** 会话快照中的节点（本插件只读取 kind/turn/provenance/requestConfig）。 */
+/** 会话快照中的节点（本插件只读取 kind/turn/provenance/requestConfig/messageId）。 */
 export interface ConversationNode {
   kind: string
   seq: number
@@ -17,6 +17,8 @@ export interface ConversationNode {
   /** 完成请求的稳定模型身份（adapter 上报）。 */
   provenance?: { provider: string; model: string }
   requestConfig?: { provider?: string; model?: string }
+  /** 稳定消息身份（assistant 节点；CostBadge 用 messageId → turn 归因）。 */
+  messageId?: string
   blocks?: readonly unknown[]
   content?: readonly unknown[]
 }

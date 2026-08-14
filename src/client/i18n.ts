@@ -2,6 +2,8 @@ import { useSyncExternalStore } from 'react'
 
 export type UiLocale = 'zh' | 'en'
 
+export type RoundChartModeName = 'absolute' | 'ratio' | 'cost'
+
 export interface UiCopy {
   input: string
   output: string
@@ -23,17 +25,25 @@ export interface UiCopy {
   costEstimate: string
   inputCost: string
   outputCost: string
-  pricingNote: (miss: number, hit: number, output: number) => string
+  pricingNote: (miss: number, hit: number, output: number, source: string, verified: string) => string
+  pricingSourceLabel: string
+  pricingVerifiedLabel: string
+  pricingFileLabel: string
+  unknownModel: string
+  costUnavailable: string
   roundUsage: string
   chartDisplay: string
   totalMode: string
   compositionMode: string
+  costMode: string
   totalModeTitle: string
   compositionModeTitle: string
+  costModeTitle: string
   refresh: string
   roundExplainer: string
   totalExplainer: string
   compositionExplainer: string
+  costExplainer: string
   roundEmpty: string
   accountBalance: string
   loadingBalance: string
@@ -50,7 +60,7 @@ export interface UiCopy {
   historySource: (truncated: boolean) => string
   historyFallback: (error: string) => string
   historyLoading: string
-  recentRoundsLabel: (count: number, mode: 'absolute' | 'ratio') => string
+  recentRoundsLabel: (count: number, mode: RoundChartModeName) => string
   currentRound: string
   roundLabel: (turn: number) => string
   roundTitle: (turn: number, current: boolean) => string
@@ -61,6 +71,22 @@ export interface UiCopy {
     output: string
     write: string
   }
+  // v0.2 解释卡 / 异常 / 徽章 / 压力条
+  costLabel: string
+  modelLabel: string
+  duration: string
+  ttft: string
+  outputTps: string
+  endReason: string
+  endReasonLabel: (reason: string) => string
+  estimatedMark: string
+  anomaly: string
+  anomalyReason: (reason: 'output-growth' | 'context-bloat' | 'cache-hit-drop') => string
+  badgeCost: (usd: string) => string
+  badgeTitle: string
+  dismissBadge: string
+  pressureBarTitle: (percent: number) => string
+  pressureBarLabel: (percent: string) => string
 }
 
 const COPY: Record<UiLocale, UiCopy> = {
@@ -70,21 +96,34 @@ const COPY: Record<UiLocale, UiCopy> = {
     usageDetails: '会话用量详情', sessionUsage: '会话用量', billedInput: '计费输入', cacheHit: '缓存命中', contextUsage: '上下文占用', unavailable: '暂无',
     sessionEmpty: '发送消息后，这里会显示当前会话的 Token 用量。',
     costEstimate: '成本估算', inputCost: '输入', outputCost: '输出',
-    pricingNote: (miss, hit, output) => `官方刊例价：未命中输入 ${miss}/1M，命中输入 ${hit}/1M，输出 ${output}/1M USD。估算值，不代表官方账单。`,
-    roundUsage: '轮次用量', chartDisplay: '图表显示方式', totalMode: '总量', compositionMode: '构成',
-    totalModeTitle: '按实际 Token 总量比较各轮消耗', compositionModeTitle: '将每轮统一为 100%，比较 Token 构成', refresh: '刷新',
-    roundExplainer: '每根柱代表一轮提问与回答', totalExplainer: '柱高表示本轮 Token 总量', compositionExplainer: '每根柱统一为 100%，仅比较 Token 构成',
+    pricingNote: (miss, hit, output, source, verified) => `刊例价：未命中输入 ${miss}/1M，命中输入 ${hit}/1M，输出 ${output}/1M USD。来源 ${source}${verified}。估算值，不代表官方账单。`,
+    pricingSourceLabel: '价格来源', pricingVerifiedLabel: '核验于', pricingFileLabel: '覆盖文件', unknownModel: '未定价模型', costUnavailable: '价格快照不可用，无法估算成本。',
+    roundUsage: '轮次用量', chartDisplay: '图表显示方式', totalMode: '总量', compositionMode: '构成', costMode: '成本',
+    totalModeTitle: '按实际 Token 总量比较各轮消耗', compositionModeTitle: '将每轮统一为 100%，比较 Token 构成', costModeTitle: '按各桶 × 单价堆叠成本，柱顶为美元', refresh: '刷新',
+    roundExplainer: '每根柱代表一轮提问与回答', totalExplainer: '柱高表示本轮 Token 总量', compositionExplainer: '每根柱统一为 100%，仅比较 Token 构成', costExplainer: '柱高表示本轮估算成本（按刊例价）',
     roundEmpty: '发送消息后，这里会按轮次绘制 Token 用量。',
     accountBalance: '账户余额', loadingBalance: '正在查询账户余额', balanceEnough: '余额充足', balanceLow: '余额不足',
     currency: '币种', toppedUp: '充值', granted: '赠送', noApiKey: '未配置 DEEPSEEK_API_KEY（或插件 config.apiKey），无法查询余额。',
     balanceError: (message) => `余额查询失败：${message}`, unknown: '未知错误', retry: '重试', balanceIdle: '点击输入框下方的余额信息即可查询。',
     historySource: (truncated) => `来自会话日志，完整历史${truncated ? '，图表显示最近 12 轮' : ''}`,
     historyFallback: (error) => `宿主历史不可用（${error}），已回退到本页观测增量。`, historyLoading: '加载会话日志历史…',
-    recentRoundsLabel: (count, mode) => `最近 ${count} 轮 Token 用量，${mode === 'absolute' ? '总量' : '构成'}视图`,
+    recentRoundsLabel: (count, mode) => `最近 ${count} 轮用量，${mode === 'absolute' ? '总量' : mode === 'ratio' ? '构成' : '成本'}视图`,
     currentRound: '当前', roundLabel: (turn) => `轮 ${turn}`,
     roundTitle: (turn, current) => current ? (turn === -1 ? '当前轮' : `当前 · 第 ${turn} 轮`) : `第 ${turn} 轮`,
     roundTotalLabel: (turn, current, total) => `${current ? (turn === -1 ? '当前轮' : `第 ${turn} 轮，当前`) : `第 ${turn} 轮`}，总量 ${total}`,
     segments: { miss: '未命中输入', hit: '缓存输入', output: '模型输出', write: '写入缓存' },
+    costLabel: '本轮成本', modelLabel: '模型', duration: '总耗时', ttft: 'TTFT', outputTps: '输出速率', endReason: '结束原因',
+    endReasonLabel: (reason) => ({
+      completed: '完成', aborted: '中断', blocked: '阻塞', error: '出错', 'max-tokens': '达上限', interrupted: '被打断',
+    }[reason] ?? reason),
+    estimatedMark: '≈估算', anomaly: '成本异常', anomalyReason: (reason) => ({
+      'output-growth': '输出增长', 'context-bloat': '上下文膨胀', 'cache-hit-drop': '缓存命中下降',
+    }[reason]),
+    badgeCost: (usd) => `本轮 ≈ ${usd}`,
+    badgeTitle: '本轮成本估算（官方刊例价），点击关闭',
+    dismissBadge: '关闭成本徽章',
+    pressureBarTitle: (percent) => `上下文压力 ${percent}%`,
+    pressureBarLabel: (percent) => `上下文 ${percent}`,
   },
   en: {
     input: 'Input', output: 'Output', cache: 'Cache', cost: 'Cost', balance: 'Balance', usage: 'Usage',
@@ -92,21 +131,34 @@ const COPY: Record<UiLocale, UiCopy> = {
     usageDetails: 'Session usage details', sessionUsage: 'Session usage', billedInput: 'Billed input', cacheHit: 'Cache hit', contextUsage: 'Context used', unavailable: 'N/A',
     sessionEmpty: 'Token usage will appear after you send a message.',
     costEstimate: 'Estimated cost', inputCost: 'Input', outputCost: 'Output',
-    pricingNote: (miss, hit, output) => `Official list price: cache-miss input ${miss}/1M, cache-hit input ${hit}/1M, output ${output}/1M USD. Estimate only, not an official bill.`,
-    roundUsage: 'Usage by round', chartDisplay: 'Chart display', totalMode: 'Total', compositionMode: 'Mix',
-    totalModeTitle: 'Compare rounds by actual Token usage', compositionModeTitle: 'Normalize each round to 100% and compare Token mix', refresh: 'Refresh',
-    roundExplainer: 'Each bar represents one prompt and response', totalExplainer: 'Bar height shows total Tokens for the round', compositionExplainer: 'Each bar is normalized to 100% to compare Token mix',
+    pricingNote: (miss, hit, output, source, verified) => `List price: cache-miss input ${miss}/1M, cache-hit input ${hit}/1M, output ${output}/1M USD. Source: ${source}${verified}. Estimate only, not an official bill.`,
+    pricingSourceLabel: 'Price source', pricingVerifiedLabel: 'Verified', pricingFileLabel: 'Override file', unknownModel: 'Unpriced model', costUnavailable: 'Price snapshot unavailable; cost cannot be estimated.',
+    roundUsage: 'Usage by round', chartDisplay: 'Chart display', totalMode: 'Total', compositionMode: 'Mix', costMode: 'Cost',
+    totalModeTitle: 'Compare rounds by actual Token usage', compositionModeTitle: 'Normalize each round to 100% and compare Token mix', costModeTitle: 'Stack cost by bucket × unit price; bar top shows USD', refresh: 'Refresh',
+    roundExplainer: 'Each bar represents one prompt and response', totalExplainer: 'Bar height shows total Tokens for the round', compositionExplainer: 'Each bar is normalized to 100% to compare Token mix', costExplainer: 'Bar height shows the estimated cost of the round',
     roundEmpty: 'Per-round Token usage will appear after you send a message.',
     accountBalance: 'Account balance', loadingBalance: 'Loading account balance', balanceEnough: 'Available', balanceLow: 'Insufficient',
     currency: 'Currency', toppedUp: 'Topped up', granted: 'Granted', noApiKey: 'DEEPSEEK_API_KEY (or plugin config.apiKey) is not configured, so the balance cannot be queried.',
     balanceError: (message) => `Balance query failed: ${message}`, unknown: 'Unknown error', retry: 'Retry', balanceIdle: 'Select the balance below the composer to query it.',
     historySource: (truncated) => `Full history from the session log${truncated ? '; showing the latest 12 rounds' : ''}`,
     historyFallback: (error) => `Host history unavailable (${error}); showing usage observed on this page.`, historyLoading: 'Loading session history…',
-    recentRoundsLabel: (count, mode) => `Token usage for the latest ${count} rounds, ${mode === 'absolute' ? 'total' : 'mix'} view`,
+    recentRoundsLabel: (count, mode) => `Usage for the latest ${count} rounds, ${mode === 'absolute' ? 'total' : mode === 'ratio' ? 'mix' : 'cost'} view`,
     currentRound: 'Current', roundLabel: (turn) => `R${turn}`,
     roundTitle: (turn, current) => current ? (turn === -1 ? 'Current round' : `Current · Round ${turn}`) : `Round ${turn}`,
     roundTotalLabel: (turn, current, total) => `${current ? (turn === -1 ? 'Current round' : `Round ${turn}, current`) : `Round ${turn}`}, total ${total}`,
     segments: { miss: 'Cache-miss input', hit: 'Cached input', output: 'Model output', write: 'Cache write' },
+    costLabel: 'Round cost', modelLabel: 'Model', duration: 'Duration', ttft: 'TTFT', outputTps: 'Output rate', endReason: 'End reason',
+    endReasonLabel: (reason) => ({
+      completed: 'Completed', aborted: 'Aborted', blocked: 'Blocked', error: 'Error', 'max-tokens': 'Max tokens', interrupted: 'Interrupted',
+    }[reason] ?? reason),
+    estimatedMark: '≈est.', anomaly: 'Cost anomaly', anomalyReason: (reason) => ({
+      'output-growth': 'Output growth', 'context-bloat': 'Context bloat', 'cache-hit-drop': 'Cache hit drop',
+    }[reason]),
+    badgeCost: (usd) => `≈ ${usd} this round`,
+    badgeTitle: 'Estimated cost of this round (official list price); click to dismiss',
+    dismissBadge: 'Dismiss cost badge',
+    pressureBarTitle: (percent) => `Context pressure ${percent}%`,
+    pressureBarLabel: (percent) => `Context ${percent}`,
   },
 }
 

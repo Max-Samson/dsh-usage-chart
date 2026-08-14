@@ -82,6 +82,18 @@ await Promise.all([
     loader: { '.tsx': 'tsx', '.ts': 'ts' },
     jsx: 'automatic',
   }),
+
+  // ── Client 纯模块（测试用，Node ESM） ────────────────────────────────────
+  // client 半区的纯函数（如 diagnose/anomaly）不进浏览器工厂包，
+  // 单独产出可被 node --test 直接 import 的 ESM 束（仅测试消费）。
+  build({
+    entryPoints: ['src/client/diagnose/anomaly.ts'],
+    outfile: 'lib/client-test.js',
+    bundle: true,
+    format: 'esm',
+    platform: 'neutral',
+    target: 'node20',
+  }),
 ])
 
 // ── 类型声明（lib/types/*.d.ts，package.json exports.types 指向这里） ────────

@@ -28,8 +28,10 @@
 点击 ▸ 展开面板：
 
 - **会话用量汇总** — 输入（未命中/命中）、输出、缓存命中率、上下文占用（均来自官方 adapter 上报的 `tokenUsage` / `contextPressure` 投影）
-- **成本估算** — 按官方刊例价（USD/1M tokens）估算，标注「估算，非账单」
-- **轮次用量** — 支持“总量 / 构成”视图与悬浮详情；从宿主会话日志折叠完整历史，不可用时回退到本页观测增量
+- **成本估算** — 按官方刊例价（USD/1M tokens）估算并标注来源与核验日期；支持用户覆盖 `pricing.json`；未定价模型显式标记「未定价模型」
+- **轮次用量** — 支持“总量 / 构成 / **成本**”三视角；柱顶叠加**总耗时点线**；成本突增轮次加**异常标记**（归因 chip：输出增长 / 上下文膨胀 / 缓存命中下降）；柱底缓存命中迷你刻度；悬浮**解释卡**（token 分桶 + 成本 + 模型 + 耗时/TTFT/TPS + 结束原因）；从宿主会话日志折叠完整历史，不可用时回退到本页观测增量
+- **成本徽章** — 每条助手消息尾部显示可关闭的「本轮 ≈ $0.00xx」徽章
+- **上下文压力条** — 指示器行内的细压力条（`contextPressure / contextWindow`），随占用升高由绿转红
 - **账户余额** — 官方 `GET /user/balance` 接口实时查询（经宿主侧代理，密钥不暴露给浏览器）
 - **中英双语** — 自动跟随 DSH 应用内语言设置，支持运行时切换 `zh` / `en`
 
@@ -38,9 +40,10 @@
 | 数据 | 来源 | 准确性 |
 |---|---|---|
 | token 用量 | DSH 官方 adapter 上报的会话投影（`tokenUsage` / `contextPressure`） | ✅ 官方真实数据，实时更新 |
-| 成本 | 官方刊例价 × adapter 上报用量 | ⚠️ 估算值，非官方账单 |
+| 成本 | 官方刊例价（内置表 + 可选用户覆盖 `pricing.json`）× adapter 上报用量 | ⚠️ 估算值，非官方账单；价格经宿主 `/pricing` 单点解析 |
+| 轮次明细 | 宿主会话日志折叠（`/usage`）：耗时 / TTFT / TPS / 模型归因 / 结束原因 / 每轮成本 | ✅ 官方事件流折叠 |
 | 余额 | 官方 `GET https://api.deepseek.com/user/balance` | ✅ 官方实时数据 |
-| 模型名 | adapter 上报的请求 provenance | ✅ 官方真实数据 |
+| 模型名 | adapter 上报的请求 provenance / `request/context` | ✅ 官方真实数据 |
 
 ## 技术栈
 
@@ -69,7 +72,7 @@ dsh web --profile web                          # 启动 DSH Web（已在运行�
 
 ```sh
 # 方式①：显式指定目标版本
-dsh plugin --profile web add dsh-usage-chart@0.1.1
+dsh plugin --profile web add dsh-usage-chart@0.2.0
 # 方式②：先移除再重装（回到最新版）
 dsh plugin --profile web remove dsh-usage-chart
 dsh plugin --profile web add dsh-usage-chart
@@ -79,7 +82,7 @@ dsh plugin --profile web add dsh-usage-chart
 
 > ⚠️ **未全局安装 dsh（报 `dsh: command not found` / PowerShell `无法将“dsh”项识别为…`）？
 > 把上面每条 `dsh` 都写成 `npx --yes @deepseek-ai/dsh`**，例如
-> `npx --yes @deepseek-ai/dsh plugin --profile web add dsh-usage-chart@0.1.1`
+> `npx --yes @deepseek-ai/dsh plugin --profile web add dsh-usage-chart@0.2.0`
 > （原因与解法见 [FAQ](#常见问题faq) 第一条）。
 
 ### 方式二：从 GitHub 安装（源码构建）
@@ -137,11 +140,28 @@ dsh web --profile web
       config:
         apiKey: 'sk-...'        # 留空则回退到网页端/环境变量
         baseUrl: 'https://api.deepseek.com'
+        # pricingFile: '/path/to/pricing.json'   # 可选：价格覆盖文件（默认 $DSH_HOME/data/dsh-usage-chart/pricing.json）
 ```
 
 > 插件版本 < 0.1.1 时不读取网页端密钥：请用环境变量或上面的 `config.apiKey` 配置。
 
 未配置 Key 时，指示器显示 `余额 –`，点击可重试；面板内会提示如何配置。
+
+### 价格覆盖（可选，v0.2+）
+
+成本按「用户覆盖 > 内置刊例价 > 回退估算」解析（价格只在宿主解析，client 经
+`/dsh-usage-chart/pricing` 快照消费，单一价格真相）。默认覆盖文件
+`$DSH_HOME/data/dsh-usage-chart/pricing.json`（无 `DSH_HOME` 时 `~/.dsh/...`），
+支持两种形状，文件变更即时生效：
+
+```json
+{
+  "deepseek-v4-flash": { "cacheMissInput": 0.14, "cacheHitInput": 0.0028, "output": 0.28, "verifiedAt": 1755100800000 }
+}
+```
+
+或 `{ "models": { "<model>": { … } } }`。`verifiedAt`（epoch 毫秒）可选，用于面板展示
+核验日期；未收录的模型会在 UI 中显式标记「未定价模型」，不会静默按 0 计。
 
 ### 卸载
 
@@ -229,16 +249,26 @@ node scripts/verify-render.mjs # 完整渲染验证（含明暗主题、中英�
 ```
 dsh-usage-chart/
 ├── package.json          # dsh.bundle（安装层）+ dsh.client（浏览器半区）+ exports["./client"]
-├── cordis.patch.yml      # 插件行插入（config.apiKey / baseUrl）
-├── build.mjs             # esbuild 双产物 + tsc 类型声明（lib/types）构建
+├── cordis.patch.yml      # 插件行插入（config.apiKey / baseUrl / pricingFile）
+├── build.mjs             # esbuild 双产物（+ client 纯模块测试束）+ tsc 类型声明（lib/types）
 ├── src/
-│   ├── index.ts          # host 半区：/dsh-usage-chart/balance 余额代理路由
-│   ├── pricing.ts        # 官方刊例价表 + 成本计算（host/client 共享）
+│   ├── index.ts          # host 半区：/balance 余额代理 + /usage 轮次折叠 + /pricing 价格快照
+│   ├── pricing/
+│   │   ├── calc.ts       # 纯共享计算（成本分拆/格式化；两个半区 bundle 同一份）
+│   │   ├── source.ts     # PricingSource 接缝：builtin 刊例价 + pricing.json 文件适配器
+│   │   └── resolve.ts    # PricingResolver：覆盖 > 内置 > 回退，未知模型显式标记
+│   ├── usage/
+│   │   └── rounds.ts     # RoundFold：耗时/TTFT/TPS/模型归因/结束原因/每轮成本（纯函数）
 │   └── client/
-│       ├── index.ts      # client 入口：注册 'conversation.composer.dock' 槽位
-│       ├── UsageIndicator.tsx  # 输入框下方一行指示器
-│       ├── UsagePanel.tsx      # 可视化面板（汇总 / 成本 / 每轮柱状图 / 余额）
-│       ├── charts.tsx          # 零依赖 SVG 柱状图
+│       ├── index.ts      # client 入口：注册 composer.dock + assistant-actions 槽位
+│       ├── UsageIndicator.tsx  # 输入框下方一行指示器（含上下文压力条）
+│       ├── UsagePanel.tsx      # 可视化面板（汇总 / 成本 / 每轮图表 / 余额）编排根
+│       ├── charts.tsx          # 零依赖 SVG/HTML 原语（堆叠条/图例）
+│       ├── chart/RoundBars.tsx # 深模块柱状图（三视角 + 耗时叠加 + 异常标记 + 解释卡）
+│       ├── rounds/             # observed.ts（本页观测）/ history.ts（宿主历史）/ types.ts
+│       ├── diagnose/anomaly.ts # 成本突增判定（图表与徽章共享的纯模块）
+│       ├── badge/CostBadge.tsx # assistant 消息尾部可关闭成本徽章
+│       ├── pricing-api.ts      # usePricing：/pricing 快照消费（client 唯一价格输入）
 │       ├── balance.ts          # 余额读取 hook（经宿主代理）
 │       └── styles.ts           # 注入样式（<style data-plugin>）
 └── types/                # vendored 最小类型声明（DSH client 包未发布稳定版）
@@ -247,7 +277,7 @@ dsh-usage-chart/
 ## 数据与安全边界
 
 - token 与上下文数据来自当前 DSH 会话投影；每轮图表优先读取会话日志，读取失败时会明确标注并回退到本页观测。
-- 成本为官方刊例价估算；官方价格调整后需升级本插件。
+- 成本为官方刊例价估算（支持用户覆盖 `pricing.json`）；价格只在宿主解析，client 经 `/pricing` 快照消费，官方价格调整后可通过覆盖文件即时修正。
 - 余额经宿主同源路由代理（浏览器直连官方 API 有 CORS 与密钥暴露问题）。
 - Host 路由只接受同源 GET 请求，并为 JSON 响应设置 `no-store`；插件不会把 API Key 发送到浏览器。
 - 自定义 API 地址必须使用 HTTPS；仅回环地址允许 HTTP，便于连接本地代理。
@@ -258,7 +288,7 @@ dsh-usage-chart/
 |---|---|
 | DSH | ≥ 0.1.0-rc.6，当前按 0.1.x API 构建 |
 | Node.js | ≥ 20 |
-| Web UI | React 18 / `conversation.composer.dock` |
+| Web UI | React 18 / `conversation.composer.dock` + `conversation.chat.assistant-actions` |
 | 系统 | macOS、Linux、Windows（纯 JavaScript，无原生依赖） |
 
 ## 社区与开源
