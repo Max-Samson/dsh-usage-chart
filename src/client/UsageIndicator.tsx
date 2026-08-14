@@ -2,11 +2,12 @@
  * 输入框下方的用量指示器（挂载于 'conversation.composer.dock'）。
  * 一行展示：输入 / 输出 / 缓存命中率 / 成本估算 / 模型 / 余额，点击展开可视化面板。
  */
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { TokenUsageBuckets } from '../pricing.ts'
 import { billedInputTokens, cacheHitPercent, estimateCost, formatTokens, formatUsd } from '../pricing.ts'
 import { currencySymbol, useBalance } from './balance.ts'
 import type { TurnUsage } from './charts.tsx'
+import { getUiCopy, useUiLocale } from './i18n.ts'
 import { UsagePanel } from './UsagePanel.tsx'
 import { snapshotNodes, type ConversationNode, type ConversationSnapshot } from './snapshot.ts'
 
@@ -97,12 +98,24 @@ function deriveModel(nodes: readonly ConversationNode[]): string | undefined {
   return undefined
 }
 
+/** Solar Chart Bold, supplied project asset. Uses currentColor for both DSH themes. */
+function ChartIcon(): JSX.Element {
+  return (
+    <svg className="duc-toggle-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path fill="currentColor" d="M20 13.75C20 13.3358 19.6642 13 19.25 13H16.25C15.8358 13 15.5 13.3358 15.5 13.75V20.5H14V4.25C14 3.52169 13.9984 3.05091 13.9518 2.70403C13.908 2.37872 13.8374 2.27676 13.7803 2.21967C13.7232 2.16258 13.6213 2.09197 13.296 2.04823C12.9491 2.00159 12.4783 2 11.75 2C11.0217 2 10.5509 2.00159 10.204 2.04823C9.87872 2.09197 9.77676 2.16258 9.71967 2.21967C9.66258 2.27676 9.59196 2.37872 9.54823 2.70403C9.50159 3.05091 9.5 3.52169 9.5 4.25V20.5H8V8.75C8 8.33579 7.66421 8 7.25 8H4.25C3.83579 8 3.5 8.33579 3.5 8.75V20.5H2H1.75C1.33579 20.5 1 20.8358 1 21.25C1 21.6642 1.33579 22 1.75 22H21.75C22.1642 22 22.5 21.6642 22.5 21.25C22.5 20.8358 22.1642 20.5 21.75 20.5H21.5H20V13.75Z" />
+    </svg>
+  )
+}
+
 export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
   const { useSession, useProjection, sessionId } = props
+  const locale = useUiLocale()
+  const copy = getUiCopy(locale)
   const [expanded, setExpanded] = useState(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
+  const toggleRef = useRef<HTMLButtonElement | null>(null)
   // 悬浮面板的锚点坐标（fixed 定位，始终在可视区内）
-  const [anchor, setAnchor] = useState<{ left: number; right: number; bottom: number } | null>(null)
+  const [anchor, setAnchor] = useState<{ left: number; width: number; bottom: number } | null>(null)
 
   const totals = useProjection('tokenUsage') as TokenUsageBuckets | undefined
   const pressure = useProjection('contextPressure') as { pressureTokens?: number; projectedTokens?: number; contextWindow?: number } | undefined
@@ -121,7 +134,9 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
     const el = rootRef.current
     if (el === null) return
     const r = el.getBoundingClientRect()
-    setAnchor({ left: r.left, right: window.innerWidth - r.right, bottom: window.innerHeight - r.top + 8 })
+    const width = Math.min(Math.max(r.width, 320), 520, window.innerWidth - 16)
+    const left = Math.min(Math.max(8, r.left), window.innerWidth - width - 8)
+    setAnchor({ left, width, bottom: window.innerHeight - r.top + 8 })
   }, [])
 
   useLayoutEffect(() => {
@@ -137,52 +152,74 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
     }
   }, [expanded, updateAnchor])
 
+  useEffect(() => {
+    if (!expanded) return
+    const closeOutside = (event: PointerEvent): void => {
+      const target = event.target
+      if (target instanceof Node && rootRef.current !== null && !rootRef.current.contains(target)) setExpanded(false)
+    }
+    const closeWithKeyboard = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      setExpanded(false)
+      toggleRef.current?.focus()
+    }
+    document.addEventListener('pointerdown', closeOutside)
+    document.addEventListener('keydown', closeWithKeyboard)
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside)
+      document.removeEventListener('keydown', closeWithKeyboard)
+    }
+  }, [expanded])
+
   // 全空时保持隐藏（与官方 StatsLine 的零数据策略一致）。
   if (!hasTokens && model === undefined && balanceStatus !== 'ok' && balanceStatus !== 'loading' && !expanded) {
     return null
   }
 
-  const parts: string[] = []
+  const parts: { key: string; text: string; estimated?: boolean }[] = []
   if (hasTokens && totals !== undefined) {
-    parts.push(`输入 ${formatTokens(billedInputTokens(totals))}`)
-    parts.push(`输出 ${formatTokens(totals.outputTokens)}`)
-    if (cacheHit !== null) parts.push(`缓存 ${cacheHit}%`)
+    parts.push({ key: 'input', text: `${copy.input} ${formatTokens(billedInputTokens(totals))}` })
+    parts.push({ key: 'output', text: `${copy.output} ${formatTokens(totals.outputTokens)}` })
+    if (cacheHit !== null) parts.push({ key: 'cache', text: `${copy.cache} ${cacheHit}%` })
   }
-  if (cost !== undefined) parts.push(`成本 ${cost.estimated ? '≈' : ''}${formatUsd(cost.usd)}`)
-  if (model !== undefined) parts.push(model.replace(/^deepseek-/, ''))
+  if (cost !== undefined) parts.push({ key: 'cost', text: `${copy.cost} ${cost.estimated ? '≈' : ''}${formatUsd(cost.usd)}`, estimated: true })
+  if (model !== undefined) parts.push({ key: 'model', text: model.replace(/^deepseek-/, '') })
 
   const balanceLabel = balanceStatus === 'loading' || (balanceStatus === 'ok' && balance === undefined)
-    ? '余额 …'
+    ? `${copy.balance} …`
     : balance !== undefined
-      ? `余额 ${currencySymbol(balance.currency)}${balance.totalBalance}`
-      : '余额 –'
+      ? `${copy.balance} ${currencySymbol(balance.currency)}${balance.totalBalance}`
+      : `${copy.balance} --`
 
   const toggle = (): void => {
     setExpanded((v) => !v)
   }
 
   return (
-    <div className="duc-root" ref={rootRef}>
+    <div className="duc-root" ref={rootRef} lang={locale === 'zh' ? 'zh-CN' : 'en'}>
       <button
+        ref={toggleRef}
         type="button"
         className="duc-toggle"
         aria-expanded={expanded}
-        title={expanded ? '收起用量面板' : '展开用量面板'}
+        title={expanded ? copy.collapseUsage : copy.expandUsage}
         onClick={toggle}
       >
-        {expanded ? '▾' : '▸'}<span className="duc-toggle-label">用量</span>
+        <ChartIcon />
+        <span className="duc-toggle-label">{copy.usage}</span>
+        <span className="duc-toggle-caret" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
       </button>
       {parts.map((p, i) => (
-        <span key={p} className={p.startsWith('成本') || p.startsWith('≈') ? 'duc-est' : undefined}>
+        <span key={p.key} className={p.estimated === true ? 'duc-est' : undefined}>
           {i > 0 && <span className="duc-sep" aria-hidden>·</span>}
-          {p}
+          {p.text}
         </span>
       ))}
       {parts.length > 0 && <span className="duc-sep" aria-hidden>·</span>}
       <button
         type="button"
         className="duc-balance"
-        title={balanceStatus === 'error' ? '点击重试余额查询' : '余额来自官方接口'}
+        title={balanceStatus === 'error' ? copy.retryBalanceTitle : copy.officialBalanceTitle}
         onClick={() => void loadBalance()}
       >
         {balanceLabel}
@@ -190,10 +227,11 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
       {expanded && anchor !== null && (
         <div
           className="duc-popover"
-          style={{ left: anchor.left, right: anchor.right, bottom: anchor.bottom }}
+          style={{ left: anchor.left, width: anchor.width, bottom: anchor.bottom }}
         >
           <UsagePanel
             sessionId={sessionId}
+            locale={locale}
             totals={totals ?? { uncachedInputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }}
             model={model}
             observedTurns={[...acc.turns, acc.open]}

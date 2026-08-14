@@ -3,3 +3,5 @@ lib/
 *.log
 .DS_Store
 temp
+.pnpm-store/
+artifacts/

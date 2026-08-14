@@ -5,11 +5,12 @@
  * 每轮柱状图优先取宿主从会话日志折叠的完整历史（/dsh-usage-chart/usage），
  * 请求失败时回退到「本页观测」增量（如实标注）。
  */
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import type { TokenUsageBuckets } from '../pricing.ts'
 import { billedInputTokens, cacheHitPercent, estimateCost, formatTokens, formatUsd, pricingFor } from '../pricing.ts'
 import { currencySymbol, type BalanceData, type BalanceStatus } from './balance.ts'
-import { HStack, Legend, TOKEN_LEGEND, TurnBars, type TurnUsage } from './charts.tsx'
+import { HStack, Legend, SEGMENT_COLORS, tokenLegend, TurnBars, type TurnChartMode, type TurnUsage } from './charts.tsx'
+import { getUiCopy, type UiLocale } from './i18n.ts'
 import { useSessionUsage } from './usage-api.ts'
 
 export interface ContextPressureView {
@@ -20,6 +21,7 @@ export interface ContextPressureView {
 
 export interface UsagePanelProps {
   sessionId: string | undefined
+  locale: UiLocale
   totals: TokenUsageBuckets
   model: string | undefined
   /** 回退：本页观测的每轮增量（仅当宿主历史不可用时展示）。 */
@@ -38,10 +40,12 @@ function occupancyPercent(pressure: ContextPressureView | undefined): number | n
 }
 
 export function UsagePanel(props: UsagePanelProps): JSX.Element {
+  const [chartMode, setChartMode] = useState<TurnChartMode>('absolute')
   const {
-    sessionId, totals, model, observedTurns, pressure,
+    sessionId, locale, totals, model, observedTurns, pressure,
     balanceStatus: status, balanceData: data, loadBalance: load,
   } = props
+  const copy = getUiCopy(locale)
 
   const usage = useSessionUsage(sessionId)
 
@@ -61,80 +65,123 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
   const historyTurns = usage.status === 'ok' ? usage.turns : null
   const chartTurns = historyTurns ?? observedTurns
   const chartSourceNote = historyTurns !== null
-    ? '来自会话日志（adapter 上报），完整历史 · 点击刷新'
+    ? copy.historySource(chartTurns.length > 12)
     : usage.status === 'error'
-      ? `宿主历史不可用（${usage.error ?? '未知'}），已回退到本页观测增量。`
-      : '加载会话日志历史…'
+      ? copy.historyFallback(usage.error ?? copy.unknown)
+      : copy.historyLoading
 
   return (
-    <div className="duc-panel">
-      <h4>会话用量汇总</h4>
-      {hasTokens ? (
-        <>
-          <div className="duc-grid">
-            <div className="duc-cell"><b>{formatTokens(billedInputTokens(totals))}</b><span>输入（计费）</span></div>
-            <div className="duc-cell"><b>{formatTokens(totals.outputTokens)}</b><span>输出</span></div>
-            <div className="duc-cell"><b>{cacheHit !== null ? `${cacheHit}%` : '–'}</b><span>缓存命中率</span></div>
-            <div className="duc-cell"><b>{occupancy !== null ? `${occupancy}%` : '–'}</b><span>上下文占用</span></div>
+    <div className="duc-panel" role="dialog" aria-label={copy.usageDetails}>
+      <section className="duc-section">
+        <div className="duc-section-head">
+          <h4>{copy.sessionUsage}</h4>
+          {model !== undefined && <span className="duc-section-meta">{model.replace(/^deepseek-/, '')}</span>}
+        </div>
+        {hasTokens ? (
+          <>
+            <div className="duc-grid">
+              <div className="duc-cell"><b>{formatTokens(billedInputTokens(totals))}</b><span>{copy.billedInput}</span></div>
+              <div className="duc-cell"><b>{formatTokens(totals.outputTokens)}</b><span>{copy.output}</span></div>
+              <div className="duc-cell"><b>{cacheHit !== null ? `${cacheHit}%` : copy.unavailable}</b><span>{copy.cacheHit}</span></div>
+              <div className="duc-cell"><b>{occupancy !== null ? `${occupancy}%` : copy.unavailable}</b><span>{copy.contextUsage}</span></div>
+            </div>
+            <HStack
+              segments={[
+                { label: copy.segments.miss, value: totals.uncachedInputTokens, color: SEGMENT_COLORS.miss },
+                { label: copy.segments.hit, value: totals.cacheReadTokens, color: SEGMENT_COLORS.hit },
+                { label: copy.segments.output, value: totals.outputTokens, color: SEGMENT_COLORS.output },
+                { label: copy.segments.write, value: totals.cacheWriteTokens, color: SEGMENT_COLORS.write },
+              ]}
+            />
+            <Legend items={tokenLegend(copy)} />
+          </>
+        ) : (
+          <div className="duc-empty">{copy.sessionEmpty}</div>
+        )}
+      </section>
+
+      <section className="duc-section">
+        <div className="duc-section-head">
+          <h4>{copy.costEstimate}</h4>
+          <strong className="duc-section-value">≈ {formatUsd(cost.usd)}</strong>
+        </div>
+        <div className="duc-cost-split">
+          <span><i style={{ background: SEGMENT_COLORS.miss }} />{copy.inputCost} <b>{formatUsd(inputCost)}</b></span>
+          <span><i style={{ background: SEGMENT_COLORS.output }} />{copy.outputCost} <b>{formatUsd(outputCost)}</b></span>
+        </div>
+        <HStack
+          segments={[
+            { label: copy.inputCost, value: inputCost, color: SEGMENT_COLORS.miss },
+            { label: copy.outputCost, value: outputCost, color: SEGMENT_COLORS.output },
+          ]}
+        />
+        <div className="duc-note">{copy.pricingNote(pricing.pricing.cacheMissInput, pricing.pricing.cacheHitInput, pricing.pricing.output)}</div>
+      </section>
+
+      <section className="duc-section">
+        <div className="duc-section-head">
+          <h4>{copy.roundUsage}</h4>
+          <div className="duc-chart-actions">
+            <div className="duc-view-toggle" role="group" aria-label={copy.chartDisplay}>
+              <button
+                type="button"
+                title={copy.totalModeTitle}
+                aria-pressed={chartMode === 'absolute'}
+                onClick={() => setChartMode('absolute')}
+              >{copy.totalMode}</button>
+              <button
+                type="button"
+                title={copy.compositionModeTitle}
+                aria-pressed={chartMode === 'ratio'}
+                onClick={() => setChartMode('ratio')}
+              >{copy.compositionMode}</button>
+            </div>
+            {usage.status === 'ok' && (
+              <button type="button" className="duc-refresh" onClick={() => void usage.load()}>{copy.refresh}</button>
+            )}
           </div>
-          <HStack
-            segments={[
-              { label: '输入(未命中)', value: totals.uncachedInputTokens, color: '#4d9fff' },
-              { label: '输入(命中)', value: totals.cacheReadTokens, color: '#9ad4ff' },
-              { label: '输出', value: totals.outputTokens, color: '#4ade80' },
-            ]}
-          />
-          <Legend items={TOKEN_LEGEND} />
-        </>
-      ) : (
-        <div className="duc-note">本会话暂无 adapter 上报的 token 用量（发送消息后实时更新）。</div>
-      )}
-
-      <h4>成本估算</h4>
-      <div className="duc-grid">
-        <div className="duc-cell">
-          <b>{formatUsd(cost.usd)}</b>
-          <span>{model !== undefined ? `模型 ${model}` : '模型未知'}{cost.estimated ? '（刊例价估算）' : ''}</span>
         </div>
-      </div>
-      <HStack
-        segments={[
-          { label: '输入成本', value: inputCost, color: '#4d9fff' },
-          { label: '输出成本', value: outputCost, color: '#4ade80' },
-        ]}
-        width={200}
-      />
-      <div className="duc-note">按官方刊例价（{pricing.pricing.cacheMissInput}/1M 未命中输入 · {pricing.pricing.cacheHitInput}/1M 命中输入 · {pricing.pricing.output}/1M 输出，USD）估算，非官方账单。</div>
-
-      <h4>每轮用量</h4>
-      <TurnBars turns={chartTurns} />
-      {chartTurns.length === 0
-        ? <div className="duc-note">会话日志中暂无按轮次归类的用量（发送消息后自动绘制）。</div>
-        : <><Legend items={TOKEN_LEGEND} /><div className="duc-note">{chartSourceNote}</div></>}
-      {usage.status === 'ok' && (
-        <button type="button" className="duc-refresh" onClick={() => void usage.load()}>刷新历史</button>
-      )}
-
-      <h4>账户余额（官方 /user/balance）</h4>
-      {status === 'loading' && <div className="duc-note">查询中…</div>}
-      {status === 'ok' && balance !== undefined && (
-        <div className="duc-bal">
-          <span className="amount">{currencySymbol(balance.currency)}{balance.totalBalance}</span>
-          <span className="sub">可用额度（{balance.currency}）· 充值 {balance.toppedUpBalance} · 赠送 {balance.grantedBalance}</span>
-          <span className="sub">{data?.isAvailable ? '余额充足' : '余额不足'}</span>
+        <div className="duc-chart-explainer">
+          <span>{copy.roundExplainer}</span>
+          <b>{chartMode === 'absolute' ? copy.totalExplainer : copy.compositionExplainer}</b>
         </div>
-      )}
-      {(status === 'error' || status === 'idle') && data !== null && (
-        <div className="duc-err">
-          <span>{data.reason === 'no-api-key'
-            ? '未配置 DEEPSEEK_API_KEY（或插件 config.apiKey），无法查询余额。'
-            : `余额查询失败：${data.message ?? data.reason ?? '未知错误'}`}</span>
-          <button type="button" onClick={() => void load()}>重试</button>
+        <TurnBars turns={chartTurns} mode={chartMode} locale={locale} />
+        {chartTurns.length === 0
+          ? <div className="duc-empty">{copy.roundEmpty}</div>
+          : <><Legend items={tokenLegend(copy)} /><div className="duc-note">{chartSourceNote}</div></>}
+      </section>
+
+      <section className="duc-section">
+        <div className="duc-section-head">
+          <h4>{copy.accountBalance}</h4>
+          <span className="duc-section-meta">DeepSeek API</span>
         </div>
-      )}
-      {status === 'idle' && data === null && (
-        <div className="duc-note">点击上方余额可查询。</div>
-      )}
+        {status === 'loading' && <div className="duc-balance-skeleton" aria-label={copy.loadingBalance}><i /><span /></div>}
+        {status === 'ok' && balance !== undefined && (
+          <div className="duc-bal">
+            <div className="duc-balance-primary">
+              <span className="amount">{currencySymbol(balance.currency)}{balance.totalBalance}</span>
+              <span className={data?.isAvailable ? 'duc-status-ok' : 'duc-status-warn'}>{data?.isAvailable ? copy.balanceEnough : copy.balanceLow}</span>
+            </div>
+            <div className="duc-balance-breakdown">
+              <span>{copy.currency} <b>{balance.currency}</b></span>
+              <span>{copy.toppedUp} <b>{balance.toppedUpBalance}</b></span>
+              <span>{copy.granted} <b>{balance.grantedBalance}</b></span>
+            </div>
+          </div>
+        )}
+        {(status === 'error' || status === 'idle') && data !== null && (
+          <div className="duc-err">
+            <span>{data.reason === 'no-api-key'
+              ? copy.noApiKey
+              : copy.balanceError(data.message ?? data.reason ?? copy.unknown)}</span>
+            <button type="button" onClick={() => void load()}>{copy.retry}</button>
+          </div>
+        )}
+        {status === 'idle' && data === null && (
+          <div className="duc-empty">{copy.balanceIdle}</div>
+        )}
+      </section>
     </div>
   )
 }
