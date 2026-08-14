@@ -64,7 +64,23 @@ dsh plugin --profile web add dsh-usage-chart   # 安装并自动登记为 profil
 dsh web --profile web                          # 启动 DSH Web（已在运行时先停止再启动）
 ```
 
-更新：重新执行上面的 `add` 后重启 DSH Web，即可升级到最新版本。
+更新（升级到新版本）：pnpm 对已安装的依赖重新 `add` 可能显示 `Already up to date`
+而不升级，请用**显式版本**（推荐）或**先卸载再安装**：
+
+```sh
+# 方式①：显式指定目标版本
+dsh plugin --profile web add dsh-usage-chart@0.1.1
+# 方式②：先移除再重装（回到最新版）
+dsh plugin --profile web remove dsh-usage-chart
+dsh plugin --profile web add dsh-usage-chart
+```
+
+完成后重启 DSH Web。
+
+> ⚠️ **未全局安装 dsh（报 `dsh: command not found` / PowerShell `无法将“dsh”项识别为…`）？
+> 把上面每条 `dsh` 都写成 `npx --yes @deepseek-ai/dsh`**，例如
+> `npx --yes @deepseek-ai/dsh plugin --profile web add dsh-usage-chart@0.1.1`
+> （原因与解法见 [FAQ](#常见问题faq) 第一条）。
 
 ### 方式二：从 GitHub 安装（源码构建）
 
@@ -128,6 +144,11 @@ dsh web --profile web
 未配置 Key 时，指示器显示 `余额 –`，点击可重试；面板内会提示如何配置。
 
 ### 卸载
+
+> ⚠️ **未全局安装 dsh（报 `dsh: command not found` / PowerShell `无法将“dsh”项识别为…`）？
+> 把下面每条 `dsh` 都写成 `npx --yes @deepseek-ai/dsh`**，例如
+> `npx --yes @deepseek-ai/dsh plugin --profile web remove dsh-usage-chart`
+> （原因与解法见 [FAQ](#常见问题faq) 第一条）。
 
 ```sh
 dsh plugin --profile web remove dsh-usage-chart   # 移除依赖并自动从 profile 插件层注销

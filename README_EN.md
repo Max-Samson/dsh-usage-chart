@@ -37,7 +37,25 @@ dsh plugin --profile web add dsh-usage-chart   # installs and registers the prof
 dsh web --profile web                          # starts DSH Web (stop it first if already running)
 ```
 
-To update, re-run the `add` above and restart DSH Web.
+To update (upgrade to a new version): pnpm may print `Already up to date` and skip the
+upgrade when the dependency is already installed — use an **explicit version** (recommended)
+or **remove then re-add**:
+
+```sh
+# Option ①: pin the target version explicitly
+dsh plugin --profile web add dsh-usage-chart@0.1.1
+# Option ②: remove, then re-add (back to latest)
+dsh plugin --profile web remove dsh-usage-chart
+dsh plugin --profile web add dsh-usage-chart
+```
+
+Then restart DSH Web.
+
+> ⚠️ **No global `dsh` installed (`dsh: command not found` / PowerShell
+> `The term 'dsh' is not recognized…`)?** Prefix every `dsh` above with
+> `npx --yes @deepseek-ai/dsh`, e.g.
+> `npx --yes @deepseek-ai/dsh plugin --profile web add dsh-usage-chart@0.1.1`
+> (see FAQ item 1).
 
 ### Option 2: install from GitHub (source build)
 
@@ -99,6 +117,12 @@ dsh web --profile web
 ```
 
 ### Uninstall
+
+> ⚠️ **No global `dsh` installed (`dsh: command not found` / PowerShell
+> `The term 'dsh' is not recognized…`)?** Prefix every `dsh` below with
+> `npx --yes @deepseek-ai/dsh`, e.g.
+> `npx --yes @deepseek-ai/dsh plugin --profile web remove dsh-usage-chart`
+> (see FAQ item 1).
 
 ```sh
 dsh plugin --profile web remove dsh-usage-chart   # removes the dependency and de-registers the layer
