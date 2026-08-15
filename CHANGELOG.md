@@ -6,36 +6,21 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
-- Cost display currency: `config.currency` (`'usd'` default, `'cny'`) and `config.cnyPerUsd`
-  exchange rate (default `6.76`); costs convert at the configured rate and render with `¥`.
-- A USD/CNY toggle in the cost-estimate section: switching updates every cost figure in the
-  indicator and dashboard immediately, and the choice is remembered in the browser
-  (`localStorage`), overriding the config default.
-- A rate-refresh control in the cost-estimate section: it fetches the latest USD→CNY rate
-  through a new same-origin host proxy route (`/dsh-usage-chart/rate`; source configurable
-  via `config.fxUrl`, default open.er-api.com), re-estimates CNY costs immediately, and
-  reports the fetch time; failures keep the previous rate and are reported inline.
-- `/dsh-usage-chart/meta` host route that serves the display-currency config to the client.
+- Cost display currency: `config.currency` ('usd' | 'cny') and `config.cnyPerUsd` (default 6.76); costs render in the chosen currency.
+- USD/CNY toggle in the cost section; the choice is remembered in the browser (localStorage).
+- Rate-refresh button: fetches the latest USD→CNY rate through the new same-origin `/dsh-usage-chart/rate` proxy (`config.fxUrl`) and re-estimates immediately.
+- `/dsh-usage-chart/meta` route serving display-currency config to the client.
 
 ### Changed
 
-- The per-model price note follows the display currency and notes the applied exchange rate
-  (e.g. `CNY（1 USD ≈ 6.76 CNY）`).
-- Visual probe scripts now scope the chart-mode toggle to the round-usage section, since the
-  panel contains a second `duc-view-toggle` group (currency) ahead of it.
+- Per-model price notes follow the display currency and show the applied rate (e.g. `CNY（1 USD ≈ 6.76 CNY）`).
 
 ### Fixed
 
-- Rate refresh is now resilient: the host tries the configured/default FX source first, then a
-  built-in fallback source (frankfurter.dev) with an 8s timeout per source, and reports which
-  source succeeded; the last successful rate is persisted in the browser so an offline refresh
-  keeps the previous rate instead of falling back to the fixed default (fixes refresh failures
-  on networks where open.er-api.com is unreachable/blocked).
-- Client slot registration now waits for slot declarations via `ctx.slots.inject` instead of
-  registering directly. The direct call depends on loader application order and throws
-  `slot "…" is not declared` at boot once other plugins change that order.
+- Resilient rate refresh: falls back to a built-in FX source (frankfurter.dev) when the default (open.er-api.com) is unreachable or blocked; the last successful rate is persisted, so offline refreshes keep the previous rate instead of the fixed default.
+- Client slots register via `ctx.slots.inject` (wait for declaration), fixing `slot "…" is not declared` when loader order changes.
 
-## [0.2.0] - 2026-08-15
+## [0.2.0] - 2026-08-15## [0.2.0] - 2026-08-15
 
 ### Added
 

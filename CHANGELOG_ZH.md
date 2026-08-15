@@ -7,28 +7,21 @@
 
 ### 新增
 
-- 成本显示币种：`config.currency`（默认 `'usd'`，可 `'cny'`）与 `config.cnyPerUsd` 汇率
-  （默认 6.76）；成本按配置汇率换算并以 `¥` 展示。
-- 成本估算区新增 USD/CNY 切换：切换立即更新指示器与面板中全部成本数值，选择在浏览器
-  中记住（`localStorage`），优先于配置默认值。
-- 成本估算区新增汇率刷新：经新的同源宿主代理路由（`/dsh-usage-chart/rate`，数据源可用
-  `config.fxUrl` 配置，默认 open.er-api.com）拉取最新 USD→CNY 汇率，立即重估 CNY 成本并
-  显示获取时间；失败时沿用旧汇率并就地提示。
-- 新增 `/dsh-usage-chart/meta` 宿主路由，向客户端下发显示币种配置。
+- 成本显示币种：`config.currency`（'usd' | 'cny'）与 `config.cnyPerUsd`（默认 6.76），成本按所选币种展示。
+- 成本区 USD/CNY 切换按钮，选择在浏览器中记住（localStorage）。
+- 「刷新汇率」按钮：经新同源代理路由 `/dsh-usage-chart/rate`（`config.fxUrl`）拉取最新 USD→CNY 汇率并立即重估。
+- 新增 `/dsh-usage-chart/meta` 路由，向客户端下发显示币种配置。
 
 ### 变更
 
-- 刊例价注记跟随显示币种并标注所用汇率（如 `CNY（1 USD ≈ 6.76 CNY）`）。
-- 可视化探测脚本改为按图表区 aria-label 定位视角切换按钮（面板在它前面新增了第二个
-  `duc-view-toggle` 组：币种）。
+- 刊例价注记跟随显示币种并标注所用汇率。
 
 ### 修复
 
-- 汇率刷新增强健壮性：宿主按配置/默认源优先、内置回退源（frankfurter.dev）兜底依次尝试（每源 8s 超时）并标注成功源；最近一次成功汇率持久化到浏览器，断网刷新时沿用上次汇率而非写死的默认值（修复 open.er-api.com 在网络不可达/被拦截时刷新失败的问题）。
-- 客户端槽位注册改为经 `ctx.slots.inject` 等待声明：直接 register 依赖加载顺序，其他
-  插件改变顺序时会启动即抛 `slot "…" is not declared`。
+- 汇率刷新健壮性：默认源不可达时自动回退内置备用源（frankfurter.dev）；上次成功汇率持久化，断网刷新沿用真实汇率而非写死默认值。
+- 槽位注册改为 `ctx.slots.inject` 等待声明，修复加载顺序变化时 `slot "…" is not declared`。
 
-## [0.2.0] - 2026-08-15
+## [0.2.0] - 2026-08-15## [0.2.0] - 2026-08-15
 
 ### 新增
 
