@@ -144,11 +144,33 @@ test('balance route prefers config.apiKey over the credentials service', async (
   assert.equal(body.apiKeyConfigured, true)
 })
 
+/** 临时移除/恢复 process.env.DEEPSEEK_API_KEY，隔离「无密钥」用例与宿主环境。 */
+function withEnvKey(value, run) {
+  const previous = process.env.DEEPSEEK_API_KEY
+  if (value === undefined) delete process.env.DEEPSEEK_API_KEY
+  else process.env.DEEPSEEK_API_KEY = value
+  return Promise.resolve().then(run).finally(() => {
+    if (previous === undefined) delete process.env.DEEPSEEK_API_KEY
+    else process.env.DEEPSEEK_API_KEY = previous
+  })
+}
+
 test('balance route reports no-api-key when no key is configured anywhere', async () => {
-  const { recorder, body } = await balanceResponse()
-  assert.equal(recorder.status, 200)
-  assert.equal(body.apiKeyConfigured, false)
-  assert.equal(body.reason, 'no-api-key')
+  await withEnvKey(undefined, async () => {
+    const { recorder, body } = await balanceResponse()
+    assert.equal(recorder.status, 200)
+    assert.equal(body.apiKeyConfigured, false)
+    assert.equal(body.reason, 'no-api-key')
+  })
+})
+
+test('balance route falls back to $DEEPSEEK_API_KEY when no credentials/config key exists', async () => {
+  await withEnvKey('sk-env-test', async () => {
+    const { recorder, body } = await balanceResponse()
+    assert.equal(recorder.status, 200)
+    assert.equal(body.apiKeyConfigured, true, '应解析到环境变量密钥')
+    assert.equal(body.reason, 'request-failed') // 回环端口拒绝连接：证明拿到了密钥并尝试了请求
+  })
 })
 
 test('display-currency helpers convert and format USD amounts', () => {
