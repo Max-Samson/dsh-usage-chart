@@ -12,8 +12,8 @@
 
 <table>
   <tr>
-    <td width="50%"><img src="./docs/images/usage-panel-demo-en-light.png" alt="浅色主题的英文用量面板演示" /><br /><sub>浅色主题 · English</sub></td>
-    <td width="50%"><img src="./docs/images/usage-panel-demo-zh-dark.png" alt="深色主题的简体中文用量面板演示" /><br /><sub>深色主题 · 简体中文</sub></td>
+    <td width="50%"><img src="./docs/images/usage-panel-demo-en-lightv1.0.0.png" alt="浅色主题的英文用量面板演示" /><br /><sub>浅色主题 · English</sub></td>
+    <td width="50%"><img src="./docs/images/usage-panel-demo-zh-darkv1.0.0.png" alt="深色主题的简体中文用量面板演示" /><br /><sub>深色主题 · 简体中文</sub></td>
   </tr>
 </table>
 

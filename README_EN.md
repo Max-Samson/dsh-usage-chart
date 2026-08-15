@@ -9,8 +9,8 @@ Both variants follow the DSH theme and in-app language setting.
 
 <table>
   <tr>
-    <td width="50%"><img src="./docs/images/usage-panel-demo-en-light.png" alt="Light-theme English usage-panel demo" /><br /><sub>Light theme · English</sub></td>
-    <td width="50%"><img src="./docs/images/usage-panel-demo-zh-dark.png" alt="Dark-theme Simplified Chinese usage-panel demo" /><br /><sub>Dark theme · 简体中文</sub></td>
+    <td width="50%"><img src="./docs/images/usage-panel-demo-en-lightv1.0.0.png" alt="Light-theme English usage-panel demo" /><br /><sub>Light theme · English</sub></td>
+    <td width="50%"><img src="./docs/images/usage-panel-demo-zh-darkv1.0.0.png" alt="Dark-theme Simplified Chinese usage-panel demo" /><br /><sub>Dark theme · 简体中文</sub></td>
   </tr>
 </table>
 
