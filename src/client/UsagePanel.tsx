@@ -8,8 +8,9 @@
  */
 import { useMemo, useState } from 'react'
 import type { TokenUsageBuckets } from '../pricing/calc.ts'
-import { billedInputTokens, cacheHitPercent, costSplit, formatTokens, formatUsd } from '../pricing/calc.ts'
+import { billedInputTokens, cacheHitPercent, costSplit, formatMoney, formatPricePerM, formatTokens } from '../pricing/calc.ts'
 import { currencySymbol, type BalanceData, type BalanceStatus } from './balance.ts'
+import { refreshLiveRate, setDisplayCurrency, useDisplayCurrency } from './currency.ts'
 import { RoundBars, type RoundChartMode } from './chart/RoundBars.tsx'
 import { HStack, Legend, SEGMENT_COLORS, tokenLegend } from './charts.tsx'
 import { flagAnomalies } from './diagnose/anomaly.ts'
@@ -46,11 +47,20 @@ function occupancyPercent(pressure: ContextPressureView | undefined): number | n
 
 export function UsagePanel(props: UsagePanelProps): JSX.Element {
   const [chartMode, setChartMode] = useState<RoundChartMode>('absolute')
+  const [rateStatus, setRateStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
   const {
     sessionId, locale, totals, model, observedRounds, pressure,
     balanceStatus: status, balanceData: data, loadBalance: load,
   } = props
   const copy = getUiCopy(locale)
+  const { currency, cnyPerUsd, rateFetchedAt } = useDisplayCurrency()
+  const currencySuffix = currency === 'cny' ? `CNY（1 USD ≈ ${cnyPerUsd} CNY）` : 'USD'
+
+  const onRefreshRate = async (): Promise<void> => {
+    setRateStatus('loading')
+    const result = await refreshLiveRate()
+    setRateStatus(result === 'ok' ? 'ok' : 'error')
+  }
 
   const history = useHistoryRounds(sessionId)
   const pricing = usePricing()
@@ -126,15 +136,38 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
       <section className="duc-section">
         <div className="duc-section-head">
           <h4>{copy.costEstimate}</h4>
-          <strong className="duc-section-value">
-            {costSplitTotal !== null ? `≈ ${formatUsd(costSplitTotal.totalUsd)}` : copy.unavailable}
-          </strong>
+          <div className="duc-chart-actions">
+            <div className="duc-view-toggle" role="group" aria-label={copy.currencyToggleLabel}>
+              <button
+                type="button"
+                title={copy.currencyToggleUsdTitle}
+                aria-pressed={currency === 'usd'}
+                onClick={() => setDisplayCurrency('usd')}
+              >$ USD</button>
+              <button
+                type="button"
+                title={copy.currencyToggleCnyTitle}
+                aria-pressed={currency === 'cny'}
+                onClick={() => setDisplayCurrency('cny')}
+              >¥ CNY</button>
+            </div>
+            <button
+              type="button"
+              className="duc-refresh"
+              disabled={rateStatus === 'loading'}
+              title={copy.refreshRateTitle}
+              onClick={() => void onRefreshRate()}
+            >{rateStatus === 'loading' ? copy.refreshingRate : copy.refreshRate}</button>
+            <strong className="duc-section-value">
+              {costSplitTotal !== null ? `≈ ${formatMoney(costSplitTotal.totalUsd, currency, cnyPerUsd)}` : copy.unavailable}
+            </strong>
+          </div>
         </div>
         {costSplitTotal !== null && costView !== null ? (
           <>
             <div className="duc-cost-split">
-              <span><i style={{ background: SEGMENT_COLORS.miss }} />{copy.inputCost} <b>{formatUsd(costSplitTotal.inputUsd)}</b></span>
-              <span><i style={{ background: SEGMENT_COLORS.output }} />{copy.outputCost} <b>{formatUsd(costSplitTotal.outputUsd)}</b></span>
+              <span><i style={{ background: SEGMENT_COLORS.miss }} />{copy.inputCost} <b>{formatMoney(costSplitTotal.inputUsd, currency, cnyPerUsd)}</b></span>
+              <span><i style={{ background: SEGMENT_COLORS.output }} />{copy.outputCost} <b>{formatMoney(costSplitTotal.outputUsd, currency, cnyPerUsd)}</b></span>
             </div>
             <HStack
               segments={[
@@ -144,9 +177,10 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
             />
             <div className="duc-note">
               {copy.pricingNote(
-                costView.pricing.cacheMissInput,
-                costView.pricing.cacheHitInput,
-                costView.pricing.output,
+                formatPricePerM(costView.pricing.cacheMissInput, currency, cnyPerUsd),
+                formatPricePerM(costView.pricing.cacheHitInput, currency, cnyPerUsd),
+                formatPricePerM(costView.pricing.output, currency, cnyPerUsd),
+                currencySuffix,
                 sourceText,
                 verifiedText,
               )}
@@ -154,6 +188,11 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
                 <><span className="duc-unknown-chip">{copy.unknownModel}</span> {model}</>
               )}
             </div>
+            {currency === 'cny' && rateStatus !== 'idle' && (
+              <div className="duc-note">{rateStatus === 'ok'
+                ? copy.rateLive(cnyPerUsd, new Date(rateFetchedAt ?? Date.now()).toLocaleTimeString())
+                : copy.rateError(cnyPerUsd)}</div>
+            )}
           </>
         ) : (
           <div className="duc-empty">{copy.costUnavailable}</div>

@@ -5,8 +5,9 @@
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { TokenUsageBuckets } from '../pricing/calc.ts'
-import { billedInputTokens, cacheHitPercent, formatTokens, formatUsd } from '../pricing/calc.ts'
+import { billedInputTokens, cacheHitPercent, formatMoney, formatTokens } from '../pricing/calc.ts'
 import { currencySymbol, useBalance } from './balance.ts'
+import { useDisplayCurrency } from './currency.ts'
 import { getUiCopy, useUiLocale } from './i18n.ts'
 import { resolveCost, usePricing } from './pricing-api.ts'
 import { useObservedRounds } from './rounds/observed.ts'
@@ -52,6 +53,7 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
   const { useSession, useProjection, sessionId } = props
   const locale = useUiLocale()
   const copy = getUiCopy(locale)
+  const { currency, cnyPerUsd } = useDisplayCurrency()
   const [expanded, setExpanded] = useState(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const toggleRef = useRef<HTMLButtonElement | null>(null)
@@ -125,7 +127,7 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
     parts.push({ key: 'output', text: `${copy.output} ${formatTokens(totals.outputTokens)}` })
     if (cacheHit !== null) parts.push({ key: 'cache', text: `${copy.cache} ${cacheHit}%` })
   }
-  if (cost !== undefined) parts.push({ key: 'cost', text: `${copy.cost} ${cost.estimated ? '≈' : ''}${formatUsd(cost.split.totalUsd)}`, estimated: cost.estimated })
+  if (cost !== undefined) parts.push({ key: 'cost', text: `${copy.cost} ${cost.estimated ? '≈' : ''}${formatMoney(cost.split.totalUsd, currency, cnyPerUsd)}`, estimated: cost.estimated })
   if (model !== undefined) parts.push({ key: 'model', text: model.replace(/^deepseek-/, '') })
 
   const balanceLabel = balanceStatus === 'loading' || (balanceStatus === 'ok' && balance === undefined)

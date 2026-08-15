@@ -31,6 +31,8 @@ export interface SlotRegisterOptions {
 /** ui-slots 的 SlotRegistry 服务（register 返回卸载函数）。 */
 export interface SlotRegistry {
   register(options: SlotRegisterOptions, component: unknown): () => void
+  /** 等待某个槽位声明出现后注册（声明生命周期内生效，随调用方 fiber 卸载）。 */
+  inject(key: string, callback: () => (() => void) | void): () => void
 }
 
 /** dsh-client-locale 的 locale 服务（本插件用到的面：订阅活动语言）。 */

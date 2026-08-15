@@ -3,6 +3,30 @@
 本文件记录本项目所有重要变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。英文版见 [CHANGELOG.md](./CHANGELOG.md)。
 
+## [Unreleased]
+
+### 新增
+
+- 成本显示币种：`config.currency`（默认 `'usd'`，可 `'cny'`）与 `config.cnyPerUsd` 汇率
+  （默认 6.76）；成本按配置汇率换算并以 `¥` 展示。
+- 成本估算区新增 USD/CNY 切换：切换立即更新指示器与面板中全部成本数值，选择在浏览器
+  中记住（`localStorage`），优先于配置默认值。
+- 成本估算区新增汇率刷新：经新的同源宿主代理路由（`/dsh-usage-chart/rate`，数据源可用
+  `config.fxUrl` 配置，默认 open.er-api.com）拉取最新 USD→CNY 汇率，立即重估 CNY 成本并
+  显示获取时间；失败时沿用旧汇率并就地提示。
+- 新增 `/dsh-usage-chart/meta` 宿主路由，向客户端下发显示币种配置。
+
+### 变更
+
+- 刊例价注记跟随显示币种并标注所用汇率（如 `CNY（1 USD ≈ 6.76 CNY）`）。
+- 可视化探测脚本改为按图表区 aria-label 定位视角切换按钮（面板在它前面新增了第二个
+  `duc-view-toggle` 组：币种）。
+
+### 修复
+
+- 客户端槽位注册改为经 `ctx.slots.inject` 等待声明：直接 register 依赖加载顺序，其他
+  插件改变顺序时会启动即抛 `slot "…" is not declared`。
+
 ## [0.2.0] - 2026-08-15
 
 ### 新增
