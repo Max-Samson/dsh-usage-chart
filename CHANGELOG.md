@@ -26,6 +26,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- Rate refresh is now resilient: the host tries the configured/default FX source first, then a
+  built-in fallback source (frankfurter.dev) with an 8s timeout per source, and reports which
+  source succeeded; the last successful rate is persisted in the browser so an offline refresh
+  keeps the previous rate instead of falling back to the fixed default (fixes refresh failures
+  on networks where open.er-api.com is unreachable/blocked).
 - Client slot registration now waits for slot declarations via `ctx.slots.inject` instead of
   registering directly. The direct call depends on loader application order and throws
   `slot "…" is not declared` at boot once other plugins change that order.

@@ -234,6 +234,20 @@ test('mounted /dsh-usage-chart/rate route parses the FX source and reports failu
     await route.handler({ method: 'GET', url: '/dsh-usage-chart/rate', headers: { ...sameOrigin } }, throwResponse)
     assert.equal(JSON.parse(throwResponse.body).reason, 'request-failed')
 
+    // 多源回退：主源网络失败时自动尝试回退源
+    let calls = 0
+    globalThis.fetch = async () => {
+      calls += 1
+      if (calls === 1) throw new Error('network down on primary')
+      return { ok: true, json: async () => ({ rates: { CNY: 6.7 } }) }
+    }
+    const fallbackResponse = responseRecorder()
+    await route.handler({ method: 'GET', url: '/dsh-usage-chart/rate', headers: { ...sameOrigin } }, fallbackResponse)
+    const fallbackBody = JSON.parse(fallbackResponse.body)
+    assert.equal(fallbackBody.ok, true)
+    assert.equal(fallbackBody.rate, 6.7)
+    assert.equal(typeof fallbackBody.source, 'string', '回退源成功时应标注 source')
+
     const methodResponse = responseRecorder()
     await route.handler({ method: 'POST', url: '/dsh-usage-chart/rate', headers: { host: 'localhost:3000' } }, methodResponse)
     assert.equal(methodResponse.status, 405)

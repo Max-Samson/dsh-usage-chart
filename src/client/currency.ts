@@ -19,6 +19,8 @@ export interface DisplayMeta {
 export type RateRefreshResult = 'ok' | 'request-failed' | 'bad-response'
 
 const STORAGE_KEY = 'dsh-usage-chart:currency'
+/** 上次成功汇率的持久化：刷新失败时用它代替固定默认值，避免“不能正确计算”。 */
+const RATE_STORAGE_KEY = 'dsh-usage-chart:rate'
 const DEFAULT_META: DisplayMeta = { currency: 'usd', cnyPerUsd: DEFAULT_CNY_PER_USD, rateSource: 'config' }
 
 let meta: DisplayMeta = DEFAULT_META
@@ -92,9 +94,29 @@ export async function fetchDisplayMeta(): Promise<void> {
   }
 }
 
+function storedRateMeta(): { rate: number; fetchedAt: number } | null {
+  try {
+    const raw = typeof localStorage === 'undefined' ? null : localStorage.getItem(RATE_STORAGE_KEY)
+    if (raw === null) return null
+    const parsed = JSON.parse(raw) as { rate?: unknown; fetchedAt?: unknown }
+    if (typeof parsed.rate === 'number' && Number.isFinite(parsed.rate) && parsed.rate > 0
+      && typeof parsed.fetchedAt === 'number' && Number.isFinite(parsed.fetchedAt)) {
+      return { rate: parsed.rate, fetchedAt: parsed.fetchedAt }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
 export function setLiveRate(rate: number, fetchedAt: number): void {
   if (meta.currency === 'cny' && meta.cnyPerUsd === rate && meta.rateSource === 'live' && meta.rateFetchedAt === fetchedAt) return
   meta = { ...meta, cnyPerUsd: rate, rateSource: 'live', rateFetchedAt: fetchedAt }
+  try {
+    localStorage.setItem(RATE_STORAGE_KEY, JSON.stringify({ rate, fetchedAt }))
+  } catch {
+    // ignore
+  }
   notify()
 }
 
@@ -117,6 +139,11 @@ export function initDisplayMeta(): void {
   if (stored !== null) {
     userChosen = true
     meta = { ...meta, currency: stored }
+  }
+  // 恢复上次成功汇率（如有）：异常时用它代替配置默认值
+  const storedRate = storedRateMeta()
+  if (storedRate !== null) {
+    meta = { ...meta, cnyPerUsd: storedRate.rate, rateSource: 'live', rateFetchedAt: storedRate.fetchedAt }
   }
   void fetchDisplayMeta()
 }

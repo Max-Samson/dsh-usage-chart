@@ -110,6 +110,33 @@ const DEFAULT_BASE_URL = 'https://api.deepseek.com'
 
 const DEFAULT_FX_URL = 'https://open.er-api.com/v6/latest/USD'
 
+/**
+ * 验证并规茁化汇率源 URL：强制 HTTPS（仅 loopback 放行 HTTP）、禁凭据；
+ * 与 normalizeBaseUrl 不同，保留 query 参数（汇率源常需 ?from=USD / ?base=USD）。
+ */
+function normalizeFxUrl(value: string): string {
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    throw new TypeError('dsh-usage-chart: config.fxUrl must be an absolute URL')
+  }
+  const loopback = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]'
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) {
+    throw new TypeError('dsh-usage-chart: config.fxUrl must use HTTPS (HTTP is only allowed for loopback proxies)')
+  }
+  if (url.username !== '' || url.password !== '') {
+    throw new TypeError('dsh-usage-chart: config.fxUrl must not contain credentials')
+  }
+  url.hash = ''
+  return url.toString().replace(/\/$/, '')
+}
+
+/** 回退汇率源（主源不可达时依次尝试；结构须为 `{ rates: { CNY: number } }`）。 */
+const FALLBACK_FX_URLS = [
+  'https://api.frankfurter.dev/v1/latest?base=USD',
+]
+
 /** 默认价格覆盖文件：`$DSH_HOME/data/dsh-usage-chart/pricing.json`。 */
 export function defaultPricingFile(env: NodeJS.ProcessEnv = process.env, home = homedir()): string {
   const configured = env.DSH_HOME?.trim()
@@ -249,40 +276,47 @@ async function fetchBalance(apiKey: string, baseUrl: string): Promise<BalanceRes
 }
 
 /**
- * 拉取实时 USD→CNY 汇率（open.er-api.com 或 config.fxUrl）。
- * 任何失败都返回结构化错误，不抛异常。
+ * 拉取实时 USD→CNY 汇率：按 fxUrls 顺序依次尝试（配置源优先，内置回退源兜底），
+ * 每个源独立 8s 超时；任一源返回合法 rates.CNY 即成功并标注 source。
+ * 全部失败返回结构化错误，不抛异常。
  */
-async function fetchLiveRate(fxUrl: string): Promise<{
+async function fetchLiveRate(fxUrls: string[]): Promise<{
   ok: boolean
   rate?: number
   fetchedAt?: number
   reason?: 'request-failed' | 'bad-response'
   message?: string
+  source?: string
 }> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 8_000)
-  try {
-    const res = await fetch(fxUrl, {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-      signal: controller.signal,
-    })
-    if (!res.ok) {
-      return { ok: false, reason: 'request-failed', message: `汇率源返回 HTTP ${res.status}` }
+  let last: { reason: 'request-failed' | 'bad-response'; message?: string } | null = null
+  for (const url of fxUrls) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 8_000)
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      })
+      if (!res.ok) {
+        last = { reason: 'request-failed', message: `汇率源返回 HTTP ${res.status}` }
+        continue
+      }
+      const data = (await res.json()) as { rates?: { CNY?: unknown } }
+      const rate = data.rates?.CNY
+      if (typeof rate !== 'number' || !Number.isFinite(rate) || rate <= 0) {
+        last = { reason: 'bad-response', message: '汇率源未返回有效的 rates.CNY' }
+        continue
+      }
+      return { ok: true, rate, fetchedAt: Date.now(), source: url }
+    } catch (error) {
+      last = { reason: 'request-failed', message: error instanceof Error ? error.message : String(error) }
+    } finally {
+      clearTimeout(timer)
     }
-    const data = (await res.json()) as { rates?: { CNY?: unknown } }
-    const rate = data.rates?.CNY
-    if (typeof rate !== 'number' || !Number.isFinite(rate) || rate <= 0) {
-      return { ok: false, reason: 'bad-response', message: '汇率源未返回有效的 rates.CNY' }
-    }
-    return { ok: true, rate, fetchedAt: Date.now() }
-  } catch (error) {
-    return { ok: false, reason: 'request-failed', message: error instanceof Error ? error.message : String(error) }
-  } finally {
-    clearTimeout(timer)
   }
+  return { ok: false, reason: last?.reason ?? 'request-failed', message: last?.message }
 }
-
 /**
  * 插件入口：注册余额代理 / 用量折叠 / 价格快照 / 显示配置 / 汇率代理路由。
  * @param ctx - 宿主 Context（cordis）。
@@ -360,7 +394,12 @@ export function apply(ctx: Context, config: Config = {}): void {
 
   const displayCurrency = normalizeCurrency(config.currency)
   const cnyPerUsd = normalizeCnyPerUsd(config.cnyPerUsd)
-  const fxUrl = normalizeBaseUrl(config.fxUrl === undefined || config.fxUrl === '' ? DEFAULT_FX_URL : config.fxUrl)
+  // 汇率源列表：配置源（或默认源） + 内置回退源，去重后依次尝试
+  const configuredFxUrl = config.fxUrl?.trim() ?? ''
+  const fxUrls = [...new Set([
+    configuredFxUrl === '' ? DEFAULT_FX_URL : normalizeFxUrl(configuredFxUrl),
+    ...FALLBACK_FX_URLS,
+  ])]
 
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
@@ -376,7 +415,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     path: '/dsh-usage-chart/rate',
     async handler(req: IncomingMessage, res: ServerResponse) {
       if (!guardRequest(req, res)) return
-      const result = await fetchLiveRate(fxUrl)
+      const result = await fetchLiveRate(fxUrls)
       writeJson(res, 200, result)
     },
   }), 'dsh-usage-chart: rate route')
