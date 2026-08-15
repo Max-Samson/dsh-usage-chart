@@ -89,7 +89,7 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
   const balance = data?.balances?.[0]
 
   const chartSourceNote = historyRounds !== null
-    ? copy.historySource(chartRounds.length > 12)
+    ? copy.historySource(chartRounds.length)
     : history.status === 'error'
       ? copy.historyFallback(history.error ?? copy.unknown)
       : copy.historyLoading

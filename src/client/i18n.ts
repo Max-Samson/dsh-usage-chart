@@ -65,14 +65,17 @@ export interface UiCopy {
   unknown: string
   retry: string
   balanceIdle: string
-  historySource: (truncated: boolean) => string
+  historySource: (count: number) => string
   historyFallback: (error: string) => string
   historyLoading: string
-  recentRoundsLabel: (count: number, mode: RoundChartModeName) => string
+  roundsLabel: (count: number, mode: RoundChartModeName) => string
   currentRound: string
   roundLabel: (turn: number) => string
   roundTitle: (turn: number, current: boolean) => string
   roundTotalLabel: (turn: number, current: boolean, total: string) => string
+  /** v1.0.0 横向滚动：查看更早轮次 / 回到最新轮次的箭头按钮标签。 */
+  scrollEarlier: string
+  scrollLatest: string
   segments: {
     miss: string
     hit: string
@@ -120,12 +123,13 @@ const COPY: Record<UiLocale, UiCopy> = {
     rateError: (rate) => `实时汇率获取失败（网络不可达或汇率源被拦截），沿用 1 USD = ${rate} CNY。可在 config.fxUrl 配置其他汇率源。`,
     toppedUp: '充值', granted: '赠送', noApiKey: '未配置 DEEPSEEK_API_KEY（或插件 config.apiKey），无法查询余额。',
     balanceError: (message) => `余额查询失败：${message}`, unknown: '未知错误', retry: '重试', balanceIdle: '点击输入框下方的余额信息即可查询。',
-    historySource: (truncated) => `来自会话日志，完整历史${truncated ? '，图表显示最近 12 轮' : ''}`,
+    historySource: (count) => `来自会话日志，完整历史，共 ${count} 轮${count > 12 ? '，可左右滑动查看更早轮次' : ''}`,
     historyFallback: (error) => `宿主历史不可用（${error}），已回退到本页观测增量。`, historyLoading: '加载会话日志历史…',
-    recentRoundsLabel: (count, mode) => `最近 ${count} 轮用量，${mode === 'absolute' ? '总量' : mode === 'ratio' ? '构成' : '成本'}视图`,
+    roundsLabel: (count, mode) => `共 ${count} 轮用量，${mode === 'absolute' ? '总量' : mode === 'ratio' ? '构成' : '成本'}视图`,
     currentRound: '当前', roundLabel: (turn) => `轮 ${turn}`,
     roundTitle: (turn, current) => current ? (turn === -1 ? '当前轮' : `当前 · 第 ${turn} 轮`) : `第 ${turn} 轮`,
     roundTotalLabel: (turn, current, total) => `${current ? (turn === -1 ? '当前轮' : `第 ${turn} 轮，当前`) : `第 ${turn} 轮`}，总量 ${total}`,
+    scrollEarlier: '查看更早轮次', scrollLatest: '回到最新轮次',
     segments: { miss: '未命中输入', hit: '缓存输入', output: '模型输出', write: '写入缓存' },
     costLabel: '本轮成本', modelLabel: '模型', duration: '总耗时', ttft: 'TTFT', outputTps: '输出速率', endReason: '结束原因',
     endReasonLabel: (reason) => ({
@@ -162,12 +166,13 @@ const COPY: Record<UiLocale, UiCopy> = {
     rateError: (rate) => `Could not fetch the live rate (network unreachable or the FX source is blocked); keeping 1 USD = ${rate} CNY. Configure config.fxUrl for another source.`,
     toppedUp: 'Topped up', granted: 'Granted', noApiKey: 'DEEPSEEK_API_KEY (or plugin config.apiKey) is not configured, so the balance cannot be queried.',
     balanceError: (message) => `Balance query failed: ${message}`, unknown: 'Unknown error', retry: 'Retry', balanceIdle: 'Select the balance below the composer to query it.',
-    historySource: (truncated) => `Full history from the session log${truncated ? '; showing the latest 12 rounds' : ''}`,
+    historySource: (count) => `Full history from the session log · ${count} rounds${count > 12 ? '; scroll horizontally for earlier rounds' : ''}`,
     historyFallback: (error) => `Host history unavailable (${error}); showing usage observed on this page.`, historyLoading: 'Loading session history…',
-    recentRoundsLabel: (count, mode) => `Usage for the latest ${count} rounds, ${mode === 'absolute' ? 'total' : mode === 'ratio' ? 'mix' : 'cost'} view`,
+    roundsLabel: (count, mode) => `Usage across ${count} rounds, ${mode === 'absolute' ? 'total' : mode === 'ratio' ? 'mix' : 'cost'} view`,
     currentRound: 'Current', roundLabel: (turn) => `R${turn}`,
     roundTitle: (turn, current) => current ? (turn === -1 ? 'Current round' : `Current · Round ${turn}`) : `Round ${turn}`,
     roundTotalLabel: (turn, current, total) => `${current ? (turn === -1 ? 'Current round' : `Round ${turn}, current`) : `Round ${turn}`}, total ${total}`,
+    scrollEarlier: 'View earlier rounds', scrollLatest: 'Go to latest rounds',
     segments: { miss: 'Cache-miss input', hit: 'Cached input', output: 'Model output', write: 'Cache write' },
     costLabel: 'Round cost', modelLabel: 'Model', duration: 'Duration', ttft: 'TTFT', outputTps: 'Output rate', endReason: 'End reason',
     endReasonLabel: (reason) => ({

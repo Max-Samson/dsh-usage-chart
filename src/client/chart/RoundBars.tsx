@@ -7,9 +7,14 @@
  * - 缓存命中迷你趋势：柱底小刻度融入现有图，不单独成图；
  * - Tooltip 解释卡：token 分桶 + 成本 + 模型 + 耗时/TTFT/TPS + 缓存命中 + 结束原因。
  *
+ * v1.0.0（本轮）：不再截断最近 12 轮——全部轮次渲染进横向滚动容器
+ * （固定细柱宽，超出视口的部分左右滑动查看；自动滚到最新轮次，越界时出现
+ * 箭头按钮 + 边缘渐隐提示）。SVG 单位恒为 1:1 CSS px（viewBox 宽 == 样式宽），
+ * 因此工具提示可用内容坐标 - scrollLeft 精确定位，与滚动位置无关。
+ *
  * 零依赖 SVG；复用既有交互路径（hover / focus / 当前轮高亮）。
  */
-import { useId, useState } from 'react'
+import { useId, useLayoutEffect, useRef, useState } from 'react'
 import { cacheHitPercent, formatDuration, formatTokens, formatUsd, type TokenUsageBuckets } from '../../pricing/calc.ts'
 import { SEGMENT_COLORS } from '../charts.tsx'
 import type { AnomalyFlag } from '../diagnose/anomaly.ts'
@@ -25,12 +30,20 @@ export interface Segment {
 }
 
 const BAR_HEIGHT = 96
-const CHART_WIDTH = 640
 const PAD_X = 10
 const PAD_TOP = 22
 const LABEL_HEIGHT = 22
 const TICK_HEIGHT = 26
-const MAX_VISIBLE_ROUNDS = 12
+/** 固定细柱宽与柱间距：无论轮次多少柱宽恒定，视觉不再随数据拥挤。 */
+const BAR_WIDTH = 30
+const GAP = 10
+const SLOT = BAR_WIDTH + GAP
+/** 图表最小宽度（CSS px，SVG 单位 1:1）。轮次少时图表居中显示，不拉伸柱宽。 */
+const MIN_CHART_WIDTH = 480
+/** 值标签的最大字符数：过长（如 "$0.0013"、"123.4K"）时省略，避免与相邻柱重叠。 */
+const MAX_VALUE_LABEL_CHARS = 5
+/** 工具提示相对可见区边缘的最小留白（px，解释卡宽 212px 的一半 + 边距）。 */
+const TOOLTIP_MARGIN = 116
 /** 耗时叠加：柱顶偏移的最大像素（随总耗时归一化）。 */
 const DURATION_BAND = 11
 
@@ -67,6 +80,10 @@ function formatTotal(value: number, mode: RoundChartMode): string {
   return mode === 'cost' ? formatUsd(value) : formatTokens(value)
 }
 
+function clamp(value: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, value))
+}
+
 export function RoundBars({
   rounds,
   mode = 'absolute',
@@ -80,21 +97,44 @@ export function RoundBars({
 }): JSX.Element | null {
   const tooltipId = useId()
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
+  const [scrollLeft, setScrollLeft] = useState(0)
+  const [viewportW, setViewportW] = useState(0)
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+
+  // 测量可见区宽度（驱动箭头/渐隐的出现与工具提示的边界收敛）。
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (el === null) return
+    const update = (): void => setViewportW(el.clientWidth)
+    update()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  // 新数据（轮次变化）或切换视角后自动滚回最新轮次，保证「当前轮」始终可见。
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (el !== null) el.scrollLeft = el.scrollWidth
+  }, [rounds, mode])
+
   if (rounds.length === 0) return null
   const copy = getUiCopy(locale)
-  const visible = rounds.slice(-MAX_VISIBLE_ROUNDS)
-  const n = visible.length
-  const gap = n <= 4 ? 18 : 9
-  const available = CHART_WIDTH - PAD_X * 2
-  const barW = Math.min(78, (available - gap * (n - 1)) / n)
-  const groupWidth = barW * n + gap * (n - 1)
-  const startX = (CHART_WIDTH - groupWidth) / 2
+
+  const n = rounds.length
+  const contentWidth = PAD_X * 2 + n * BAR_WIDTH + Math.max(0, n - 1) * GAP
+  // 最小宽度自适应可见区：≤480px 时填满容器（不滚动、不拉伸柱宽），
+  // 更宽时取 480px 居中；内容超出时 svgWidth = 内容宽 → 横向滚动。
+  const targetMin = Math.min(MIN_CHART_WIDTH, viewportW > 0 ? viewportW : MIN_CHART_WIDTH)
+  const svgWidth = Math.max(contentWidth, targetMin)
+  const startX = (svgWidth - contentWidth) / 2 + PAD_X
   const baseline = PAD_TOP + BAR_HEIGHT
   const svgHeight = baseline + LABEL_HEIGHT + TICK_HEIGHT
 
-  const maxValue = Math.max(1, ...visible.map((r) => roundTotal(r, mode)))
+  const maxValue = Math.max(1, ...rounds.map((r) => roundTotal(r, mode)))
   let maxDuration = 0
-  for (const r of visible) if (r.durationMs !== null && r.durationMs > maxDuration) maxDuration = r.durationMs
+  for (const r of rounds) if (r.durationMs !== null && r.durationMs > maxDuration) maxDuration = r.durationMs
   const hasDuration = maxDuration > 0
 
   const flagByTurn = new Map<number, AnomalyFlag>()
@@ -102,124 +142,186 @@ export function RoundBars({
 
   const segmentsOf = (r: ChartRound): Segment[] => (mode === 'cost' ? costSegments(copy, r) : tokenSegments(copy, r.buckets))
 
-  const activeRound = activeIndex === null ? null : visible[activeIndex] ?? null
+  const onScroll = (): void => {
+    const el = scrollRef.current
+    if (el === null) return
+    setScrollLeft((prev) => (Math.abs(prev - el.scrollLeft) < 1 ? prev : el.scrollLeft))
+  }
+
+  // 越界状态：驱动箭头按钮与边缘渐隐的显隐。
+  const scrollable = viewportW > 0 && svgWidth > viewportW + 1
+  const maxScroll = Math.max(0, svgWidth - viewportW)
+  const canScrollLeft = scrollable && scrollLeft > 1
+  const canScrollRight = scrollable && scrollLeft < maxScroll - 1
+
+  const scrollBy = (dir: 1 | -1): void => {
+    const el = scrollRef.current
+    if (el === null) return
+    const reduce = typeof matchMedia !== 'undefined'
+      && matchMedia('(prefers-reduced-motion: reduce)').matches
+    el.scrollBy({
+      left: dir * Math.max(120, Math.round(viewportW * 0.7)),
+      behavior: reduce ? 'auto' : 'smooth',
+    })
+  }
+
+  const activeRound = activeIndex === null ? null : rounds[activeIndex] ?? null
   const activeIsCurrent = activeIndex === n - 1
   const activeParts = activeRound === null ? [] : segmentsOf(activeRound).filter((s) => s.value > 0)
-  const activeX = activeIndex === null ? 50 : ((startX + activeIndex * (barW + gap) + barW / 2) / CHART_WIDTH) * 100
+  // 工具提示位置：内容坐标（SVG 单位 == CSS px）减去已滚动距离，再收敛进可见区。
+  const vw = viewportW > 0 ? viewportW : MIN_CHART_WIDTH
+  const activeX = activeIndex === null ? 0 : startX + activeIndex * SLOT + BAR_WIDTH / 2
+  const tooltipLeft = activeIndex === null
+    ? '50%'
+    : `${clamp(activeX - scrollLeft, TOOLTIP_MARGIN, Math.max(TOOLTIP_MARGIN, vw - TOOLTIP_MARGIN))}px`
 
   return (
     <div className="duc-chart-wrap">
-      <svg className="duc-turn-chart" viewBox={`0 0 ${CHART_WIDTH} ${svgHeight}`} role="img" aria-label={copy.recentRoundsLabel(n, mode)}>
-        <line className="duc-chart-baseline" x1={PAD_X} x2={CHART_WIDTH - PAD_X} y1={baseline} y2={baseline} />
-        {visible.map((round, i) => {
-          const x = startX + i * (barW + gap)
-          const rawTotal = roundTotal(round, mode)
-          const total = Math.max(1, rawTotal)
-          const totalHeight = mode === 'ratio' && rawTotal > 0 ? BAR_HEIGHT : (total / maxValue) * BAR_HEIGHT
-          let y = baseline
-          const parts = segmentsOf(round)
-            .filter((s) => s.value > 0)
-            .map((s) => {
-              const h = mode === 'ratio' ? (s.value / total) * BAR_HEIGHT : (s.value / maxValue) * BAR_HEIGHT
-              y -= h
-              return <rect className="duc-chart-segment" key={s.label} x={x} y={y} width={barW} height={Math.max(0, h)} style={{ fill: s.color }} rx={1.5} />
-            })
-          const durationOffset = round.durationMs !== null && hasDuration
-            ? Math.min(DURATION_BAND, (round.durationMs / maxDuration) * DURATION_BAND)
-            : 0
-          const valueY = Math.max(16 + durationOffset, baseline - totalHeight - 6)
-          const isActive = activeIndex === i
-          const isCurrent = i === n - 1
-          const flag = flagByTurn.get(round.turn)
-          const hit = cacheHitPercent(round.buckets)
-          const title = copy.roundTotalLabel(round.turn, isCurrent, formatTotal(rawTotal, mode))
-          return (
-            <g
-              key={`${round.turn}-${i}`}
-              className={`duc-chart-turn${isCurrent ? ' duc-chart-turn-current' : ''}${isActive ? ' is-active' : ''}${activeIndex !== null && !isActive ? ' is-muted' : ''}${flag !== undefined ? ' duc-chart-anomaly' : ''}`}
-              role="img"
-              tabIndex={0}
-              aria-label={title}
-              aria-describedby={isActive ? tooltipId : undefined}
-              onPointerEnter={() => setActiveIndex(i)}
-              onPointerLeave={() => setActiveIndex((active) => active === i ? null : active)}
-              onFocus={() => setActiveIndex(i)}
-              onBlur={() => setActiveIndex((active) => active === i ? null : active)}
-            >
-              {isCurrent && (
-                <rect
-                  className="duc-chart-current-band"
-                  x={x - 4}
-                  y={baseline - totalHeight - 4}
-                  width={barW + 8}
-                  height={totalHeight + 8}
-                  rx={4}
-                />
-              )}
-              {parts}
-              {flag !== undefined && <path className="duc-chart-flag" d={`M ${x + barW - 7} ${baseline - totalHeight + 2} h 5 v 5 z`} />}
-              {hit !== null && (
-                <rect
-                  className="duc-chart-hit-tick"
-                  x={x + barW / 2 - 2}
-                  y={baseline + 3 + (6 - Math.max(1.5, (hit / 100) * 6))}
-                  width={4}
-                  height={Math.max(1.5, (hit / 100) * 6)}
-                  rx={1}
-                  style={{ fill: SEGMENT_COLORS.hit }}
-                >
-                  <title>{copy.cacheHit}: {hit}%</title>
-                </rect>
-              )}
-              <text className="duc-chart-value" x={x + barW / 2} y={valueY} textAnchor="middle">
-                {formatTotal(rawTotal, mode)}
-              </text>
-              <text className="duc-chart-label" x={x + barW / 2} y={baseline + 16} textAnchor="middle">
-                {isCurrent ? copy.currentRound : copy.roundLabel(round.turn)}
-              </text>
+      <div className="duc-chart-scroll" ref={scrollRef} onScroll={onScroll}>
+        <svg
+          className="duc-turn-chart"
+          viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+          style={{ width: `${svgWidth}px` }}
+          role="img"
+          aria-label={copy.roundsLabel(n, mode)}
+        >
+          <line className="duc-chart-baseline" x1={PAD_X} x2={svgWidth - PAD_X} y1={baseline} y2={baseline} />
+          {rounds.map((round, i) => {
+            const x = startX + i * SLOT
+            const rawTotal = roundTotal(round, mode)
+            const total = Math.max(1, rawTotal)
+            const totalHeight = mode === 'ratio' && rawTotal > 0 ? BAR_HEIGHT : (total / maxValue) * BAR_HEIGHT
+            let y = baseline
+            const parts = segmentsOf(round)
+              .filter((s) => s.value > 0)
+              .map((s) => {
+                const h = mode === 'ratio' ? (s.value / total) * BAR_HEIGHT : (s.value / maxValue) * BAR_HEIGHT
+                y -= h
+                return <rect className="duc-chart-segment" key={s.label} x={x} y={y} width={BAR_WIDTH} height={Math.max(0, h)} style={{ fill: s.color }} rx={1.5} />
+              })
+            const durationOffset = round.durationMs !== null && hasDuration
+              ? Math.min(DURATION_BAND, (round.durationMs / maxDuration) * DURATION_BAND)
+              : 0
+            const valueY = Math.max(16 + durationOffset, baseline - totalHeight - 6)
+            const isActive = activeIndex === i
+            const isCurrent = i === n - 1
+            const flag = flagByTurn.get(round.turn)
+            const hit = cacheHitPercent(round.buckets)
+            const totalText = formatTotal(rawTotal, mode)
+            // 值标签策略：当前轮始终显示；可滚动（密集）时其余轮省略，
+            // 不可滚动时仅省略过长的文本（避免相邻标签重叠），数值随时在 Tooltip 里。
+            const showValue = isCurrent || (!scrollable && totalText.length <= MAX_VALUE_LABEL_CHARS)
+            const title = copy.roundTotalLabel(round.turn, isCurrent, totalText)
+            return (
+              <g
+                key={`${round.turn}-${i}`}
+                className={`duc-chart-turn${isCurrent ? ' duc-chart-turn-current' : ''}${isActive ? ' is-active' : ''}${activeIndex !== null && !isActive ? ' is-muted' : ''}${flag !== undefined ? ' duc-chart-anomaly' : ''}`}
+                role="img"
+                tabIndex={0}
+                aria-label={title}
+                aria-describedby={isActive ? tooltipId : undefined}
+                onPointerEnter={() => setActiveIndex(i)}
+                onPointerLeave={() => setActiveIndex((active) => active === i ? null : active)}
+                onFocus={() => setActiveIndex(i)}
+                onBlur={() => setActiveIndex((active) => active === i ? null : active)}
+              >
+                {isCurrent && (
+                  <rect
+                    className="duc-chart-current-band"
+                    x={x - 4}
+                    y={baseline - totalHeight - 4}
+                    width={BAR_WIDTH + 8}
+                    height={totalHeight + 8}
+                    rx={4}
+                  />
+                )}
+                {parts}
+                {flag !== undefined && <path className="duc-chart-flag" d={`M ${x + BAR_WIDTH - 7} ${baseline - totalHeight + 2} h 5 v 5 z`} />}
+                {hit !== null && (
+                  <rect
+                    className="duc-chart-hit-tick"
+                    x={x + BAR_WIDTH / 2 - 2}
+                    y={baseline + 3 + (6 - Math.max(1.5, (hit / 100) * 6))}
+                    width={4}
+                    height={Math.max(1.5, (hit / 100) * 6)}
+                    rx={1}
+                    style={{ fill: SEGMENT_COLORS.hit }}
+                  >
+                    <title>{copy.cacheHit}: {hit}%</title>
+                  </rect>
+                )}
+                {showValue && (
+                  <text className="duc-chart-value" x={x + BAR_WIDTH / 2} y={valueY} textAnchor="middle">
+                    {totalText}
+                  </text>
+                )}
+                <text className="duc-chart-label" x={x + BAR_WIDTH / 2} y={baseline + 16} textAnchor="middle">
+                  {isCurrent ? copy.currentRound : copy.roundLabel(round.turn)}
+                </text>
+              </g>
+            )
+          })}
+          {hasDuration && (
+            <g className="duc-chart-duration">
+              <polyline
+                fill="none"
+                points={rounds
+                  .map((round, i) => {
+                    const x = startX + i * SLOT + BAR_WIDTH / 2
+                    const rawTotal = roundTotal(round, mode)
+                    const totalHeight = mode === 'ratio' && rawTotal > 0 ? BAR_HEIGHT : (Math.max(1, rawTotal) / maxValue) * BAR_HEIGHT
+                    const offset = round.durationMs !== null ? Math.min(DURATION_BAND, (round.durationMs / maxDuration) * DURATION_BAND) : 0
+                    return `${x},${baseline - totalHeight - offset - 3}`
+                  })
+                  .join(' ')}
+              />
+              {rounds.map((round, i) => {
+                const x = startX + i * SLOT + BAR_WIDTH / 2
+                const rawTotal = roundTotal(round, mode)
+                const totalHeight = mode === 'ratio' && rawTotal > 0 ? BAR_HEIGHT : (Math.max(1, rawTotal) / maxValue) * BAR_HEIGHT
+                const offset = round.durationMs !== null ? Math.min(DURATION_BAND, (round.durationMs / maxDuration) * DURATION_BAND) : 0
+                return (
+                  <circle
+                    key={`dur-${round.turn}`}
+                    className="duc-chart-duration-dot"
+                    cx={x}
+                    cy={baseline - totalHeight - offset - 3}
+                    r={2.4}
+                  >
+                    <title>{copy.duration}: {formatDuration(round.durationMs)}</title>
+                  </circle>
+                )
+              })}
             </g>
-          )
-        })}
-        {hasDuration && (
-          <g className="duc-chart-duration">
-            <polyline
-              fill="none"
-              points={visible
-                .map((round, i) => {
-                  const x = startX + i * (barW + gap) + barW / 2
-                  const rawTotal = roundTotal(round, mode)
-                  const totalHeight = mode === 'ratio' && rawTotal > 0 ? BAR_HEIGHT : (Math.max(1, rawTotal) / maxValue) * BAR_HEIGHT
-                  const offset = round.durationMs !== null ? Math.min(DURATION_BAND, (round.durationMs / maxDuration) * DURATION_BAND) : 0
-                  return `${x},${baseline - totalHeight - offset - 3}`
-                })
-                .join(' ')}
-            />
-            {visible.map((round, i) => {
-              const x = startX + i * (barW + gap) + barW / 2
-              const rawTotal = roundTotal(round, mode)
-              const totalHeight = mode === 'ratio' && rawTotal > 0 ? BAR_HEIGHT : (Math.max(1, rawTotal) / maxValue) * BAR_HEIGHT
-              const offset = round.durationMs !== null ? Math.min(DURATION_BAND, (round.durationMs / maxDuration) * DURATION_BAND) : 0
-              return (
-                <circle
-                  key={`dur-${round.turn}`}
-                  className="duc-chart-duration-dot"
-                  cx={x}
-                  cy={baseline - totalHeight - offset - 3}
-                  r={2.4}
-                >
-                  <title>{copy.duration}: {formatDuration(round.durationMs)}</title>
-                </circle>
-              )
-            })}
-          </g>
-        )}
-      </svg>
+          )}
+        </svg>
+      </div>
+      {canScrollLeft && (
+        <button
+          type="button"
+          className="duc-chart-scroll-btn duc-chart-scroll-prev"
+          aria-label={copy.scrollEarlier}
+          title={copy.scrollEarlier}
+          onClick={() => scrollBy(-1)}
+        >‹</button>
+      )}
+      {canScrollRight && (
+        <button
+          type="button"
+          className="duc-chart-scroll-btn duc-chart-scroll-next"
+          aria-label={copy.scrollLatest}
+          title={copy.scrollLatest}
+          onClick={() => scrollBy(1)}
+        >›</button>
+      )}
+      {canScrollLeft && <div className="duc-chart-fade duc-chart-fade-left" aria-hidden="true" />}
+      {canScrollRight && <div className="duc-chart-fade duc-chart-fade-right" aria-hidden="true" />}
       {activeRound !== null && (
         <div
           id={tooltipId}
           className="duc-chart-tooltip duc-chart-tooltip-wide"
           role="tooltip"
-          style={{ left: `${Math.max(22, Math.min(78, activeX))}%` }}
+          style={{ left: tooltipLeft }}
         >
           <div className="duc-chart-tooltip-head">
             <strong>{copy.roundTitle(activeRound.turn, activeIsCurrent)}</strong>

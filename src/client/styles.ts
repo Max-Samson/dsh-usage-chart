@@ -167,10 +167,68 @@ body[data-ds-dark-theme] .duc-popover { box-shadow: 0 16px 40px rgba(0, 0, 0, 0.
 .duc-composition span + span { border-left: 1px solid var(--dsw-alias-bg-layer-2, rgba(30, 31, 34, 0.92)); }
 
 .duc-chart-wrap { position: relative; margin-top: 6px; }
-.duc-turn-chart { display: block; width: 100%; overflow: visible; color: var(--dsw-alias-label-tertiary, rgba(255, 255, 255, 0.52)); }
+
+/* v1.0.0：横向滚动——全部轮次可见（不再截断最近 12 轮），
+   超出视口的部分左右滑动查看；细滚动条 + 箭头/渐隐提示越界。 */
+.duc-chart-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--dsw-alias-border-l3, rgba(127, 127, 127, 0.4)) transparent;
+}
+.duc-chart-scroll::-webkit-scrollbar { height: 5px; }
+.duc-chart-scroll::-webkit-scrollbar-track { background: transparent; }
+.duc-chart-scroll::-webkit-scrollbar-thumb { border-radius: 3px; background: var(--dsw-alias-border-l3, rgba(127, 127, 127, 0.4)); }
+.duc-chart-scroll::-webkit-scrollbar-thumb:hover { background: var(--dsw-alias-label-tertiary, rgba(127, 127, 127, 0.6)); }
+
+/* SVG 宽度由组件内联设置（viewBox 宽 == 样式宽，单位 1:1 CSS px），
+   轮次少时居中显示、不拉伸柱宽。 */
+.duc-turn-chart { display: block; margin: 0 auto; overflow: visible; color: var(--dsw-alias-label-tertiary, rgba(255, 255, 255, 0.52)); }
 .duc-chart-baseline { stroke: var(--dsw-alias-border-l3, rgba(127, 127, 127, 0.25)); stroke-width: 1; }
-.duc-chart-value { fill: var(--dsw-alias-label-secondary, rgba(255, 255, 255, 0.72)); font-size: 16px; font-weight: 650; }
-.duc-chart-label { fill: currentColor; font-size: 15px; font-weight: 500; }
+.duc-chart-value { fill: var(--dsw-alias-label-secondary, rgba(255, 255, 255, 0.72)); font-size: 13px; font-weight: 650; }
+
+/* v1.0.0：横向滚动提示——边缘渐隐（pointer-events: none，不挡交互） */
+.duc-chart-fade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  width: 26px;
+  pointer-events: none;
+}
+.duc-chart-fade-left { left: 0; background: linear-gradient(to right, var(--dsw-alias-bg-layer-2, rgba(30, 31, 34, 0.92)), transparent); }
+.duc-chart-fade-right { right: 0; background: linear-gradient(to left, var(--dsw-alias-bg-layer-2, rgba(30, 31, 34, 0.92)), transparent); }
+
+/* v1.0.0：横向滚动箭头按钮（越界时才出现） */
+.duc-chart-scroll-btn {
+  position: absolute;
+  top: 60px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--dsw-alias-border-l3, rgba(127, 127, 127, 0.34));
+  border-radius: 50%;
+  background: var(--dsw-alias-bg-layer-2, rgba(30, 31, 34, 0.92));
+  color: var(--dsw-alias-label-secondary, rgba(255, 255, 255, 0.7));
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.92;
+  transition: opacity 120ms ease, color 120ms ease;
+}
+.duc-chart-scroll-prev { left: 2px; }
+.duc-chart-scroll-next { right: 2px; }
+.duc-chart-scroll-btn:hover { color: var(--dsw-alias-label-primary, rgba(255, 255, 255, 0.92)); }
+.duc-chart-scroll-btn:active { transform: translateY(1px); }
+.duc-chart-scroll-btn:focus-visible { outline: 2px solid var(--duc-miss); outline-offset: 1px; }
+.duc-chart-label { fill: currentColor; font-size: 13px; font-weight: 500; }
 .duc-chart-turn { outline: none; cursor: default; }
 .duc-chart-segment { transition: opacity 120ms ease, filter 120ms ease; }
 .duc-chart-turn.is-muted .duc-chart-segment { opacity: 0.42; }
@@ -424,8 +482,10 @@ body[data-ds-dark-theme] .duc-chart-tooltip { box-shadow: 0 10px 24px rgba(0, 0,
 
 @media (prefers-reduced-motion: reduce) {
   .duc-toggle:active,
-  .duc-refresh:active { transform: none; }
-  .duc-chart-segment { transition: none; }
+  .duc-refresh:active,
+  .duc-chart-scroll-btn:active { transform: none; }
+  .duc-chart-segment,
+  .duc-chart-scroll-btn { transition: none; }
   .duc-pressure i { transition: none; }
 }
 `
