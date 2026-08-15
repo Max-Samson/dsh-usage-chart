@@ -54,9 +54,9 @@ export type SessionEvent = {
 | `step/start` / `step/end` | `turn` / `step` | 步骤边界（TTFT 归一到首个 step） |
 | `assistant/chunk`（`chunk.type === 'usage'`）+ `assistant/message`（`usage`） | `TokenUsage`: `inputTokens / outputTokens / cacheReadTokens? / cacheWriteTokens? / reasoningTokens?` | 现有四桶折叠（已实现）；`reasoningTokens` 可扩展推理占比显示 |
 | `request/header` | `config`（provider/model/reasoning effort）、`system`、`tools` | 按轮归因模型与系统提示（v0.2） |
-| `request/context` | `provider` / `model` / `contextWindow?` | 模型路由与上下文容量（v0.3 分母） |
-| `user/message` | `source`: direct human / `agent.inject()` / goal continuation | 上下文增长来源归因（v0.3） |
-| `compaction/start` / `compaction/summary` / `compaction/prune` / `compaction/end` | `summary` 带 `shadowedTokenCount`、`shadowedRange{start,end}`、`shadowedSeqs`、`provider`、`model`、`usage?` | **压缩诊断完整数据源**（v0.3）：哪轮压缩、释放多少 token、哪次 summarize 调用花了多少 |
+| `request/context` | `provider` / `model` / `contextWindow?` | 模型路由与上下文容量（v0.4 分母） |
+| `user/message` | `source`: direct human / `agent.inject()` / goal continuation | 上下文增长来源归因（v0.4） |
+| `compaction/start` / `compaction/summary` / `compaction/prune` / `compaction/end` | `summary` 带 `shadowedTokenCount`、`shadowedRange{start,end}`、`shadowedSeqs`、`provider`、`model`、`usage?` | **压缩诊断完整数据源**（v0.4）：哪轮压缩、释放多少 token、哪次 summarize 调用花了多少 |
 
 ### 3.3 官方投影（无需自研估算器）
 
@@ -66,12 +66,12 @@ export type SessionEvent = {
 |---|---|---|
 | `tokenUsage` | `uncachedInputTokens / outputTokens / cacheReadTokens / cacheWriteTokens` | 全量累计四桶（与现有 host 折叠语义一致） |
 | `contextPressure` | `pressureTokens / projectedTokens / contextWindow` | 最近一次请求的 prompt 规模 + 投影值 + 容量；`projectedTokens` 已含压缩阴影定价 |
-| `contextBreakdown` | `systemTokens / toolsTokens / messageTokens` | **“上下文为什么变大”官方已算好**——系统提示 / 工具 schema / 消息 的启发式分桶（v0.3 直接消费，标注为近似值） |
+| `contextBreakdown` | `systemTokens / toolsTokens / messageTokens` | **“上下文为什么变大”官方已算好**——系统提示 / 工具 schema / 消息 的启发式分桶（v0.4 直接消费，标注为近似值） |
 
 ### 3.4 结论
 
 - v0.2 全部数据源 ✅ 已验证；
-- v0.3 上下文组成用 `contextBreakdown` 投影，压缩用 `compaction/summary.shadowedTokenCount` ✅ 已验证；
+- v0.4 上下文组成用 `contextBreakdown` 投影，压缩用 `compaction/summary.shadowedTokenCount` ✅ 已验证；
 - v0.4 跨会话历史：官方另有 `dsh-session-query`（SQLite FTS5）与 `dsh-session-stats` 可作为宿主侧聚合的参考，实施时再验证。
 
 ## 4. 最优先工程项：价格治理
@@ -108,7 +108,7 @@ pricing 解析优先级（host 侧，每次请求实时解析）：
 - **异常轮次标记**：相对最近 N 轮成本突增的轮次加警示色描边/角标，点击显示归因 chip（缓存命中下降 / 输出增长 / 上下文膨胀，结合 `turn/end.reason`）；
 - **缓存命中率迷你趋势**：每轮 hit% 以柱内小点或底部点线融入现有图，不单独成图；
 - assistant 消息尾部可关闭的“本轮 ≈ $0.00xx”徽章（借鉴 Sttrevens，hook 在消息尾部槽位）；
-- Dock 指示器增加细**上下文压力条**（`contextPressure.pressureTokens / contextWindow` %）——v0.3 上下文诊断的前置可视入口，体积极小。
+- Dock 指示器增加细**上下文压力条**（`contextPressure.pressureTokens / contextWindow` %）——v0.4 上下文诊断的前置可视入口，体积极小。
 
 **验收**：保持零运行时依赖；明暗主题可读（沿用 `--duc-*` CSS 变量）；键盘可达（沿用现有 tabIndex / focus 路径）；中英双语文案同步。
 
@@ -125,7 +125,26 @@ pricing 解析优先级（host 侧，每次请求实时解析）：
 - **运维要点**：宿主进程无插件热重载，升级 0.2.0 后必须重启 `dsh web` 才能挂载新路由
   （已写入 CHANGELOG 升级注意）。
 
-### v0.3.0 — 上下文诊断（差异化核心）· 下一版本开发优化方向
+### ✅ v0.3.0 — 多币种成本显示（USD/CNY + 实时汇率）· 已交付 2026-08-15
+
+**目标**：成本数字以用户可读的币种呈现——默认 USD，可切换 CNY，汇率可实时刷新。
+
+**落地内容**（PR #5）
+
+- **显示币种**：`config.currency`（'usd' | 'cny'）+ `config.cnyPerUsd`（默认 6.76）；成本区 USD/CNY
+  切换按钮，选择经 localStorage 记忆（`dsh-usage-chart:currency`）；
+- **实时汇率**：「刷新汇率」经宿主 `/dsh-usage-chart/rate` 代理（`config.fxUrl` 可自定义，默认
+  open.er-api.com）拉取最新 USD→CNY 并立即重估；**多源回退**（配置源 → 内置 frankfurter.dev），
+  **上次成功汇率持久化**（`dsh-usage-chart:rate`），断网刷新沿用真实汇率而非写死默认值；
+- **配置下发**：`/dsh-usage-chart/meta` 向 client 下发显示币种与汇率配置；价格注记跟随显示币种
+  并标注所用汇率；
+- **健壮性**：槽位注册改 `ctx.slots.inject` 等待声明，修复加载顺序变化时的 `slot "…" is not declared`。
+
+**交付记录**：`npm run verify` 31 项测试全绿（新增汇率/币种用例）。本版实现偏离原 v0.3 定义
+（上下文诊断）——货币显示为更高优先的工程项，上下文诊断顺延为 v0.4（见下），README 与架构文档
+已同步。
+
+### v0.4.0 — 上下文诊断（差异化核心）· 下一版本开发优化方向
 
 **目标**：把「上下文为什么变大、哪一轮被压缩、释放了多少」变成可解释视图（Dock 入口 +
 成本关联解释，不与 dsh-context 全面重叠）。
@@ -133,7 +152,7 @@ pricing 解析优先级（host 侧，每次请求实时解析）：
 **数据源（§3.2/§3.3 已验证，实施前复核）**
 
 - `contextBreakdown` 投影：`systemTokens / toolsTokens / messageTokens`——「上下文为什么变大」官方已算好，直接消费并标注近似值；
-- `contextPressure` 投影：`pressureTokens / projectedTokens / contextWindow`——压力 vs 容量（v0.2 压力条已消费，v0.3 深化）；
+- `contextPressure` 投影：`pressureTokens / projectedTokens / contextWindow`——压力 vs 容量（v0.2 压力条已消费，v0.4 深化）；
 - `compaction/summary` 事件：`shadowedTokenCount` / `shadowedRange{start,end}` / `shadowedSeqs` / `provider` / `model` / `usage?`——哪一轮压缩、释放多少 token、summarize 调用花了多少；
 - `user/message.source`：distinguish 人工输入 / `agent.inject()` / 目标续跑——上下文增长来源归因。
 
@@ -153,7 +172,7 @@ pricing 解析优先级（host 侧，每次请求实时解析）：
 **验收**：零运行时依赖不破；contextBreakdown 消费标注为近似值；compaction 折叠有测试；
 中英双语；键盘可达。
 
-### v0.2 收尾中发现的优化方向（v0.2.x patch 或并入 v0.3，按价值排序）
+### v0.2 收尾中发现的优化方向（v0.2.x patch 或并入 v0.4，按价值排序）
 
 1. **/pricing 快照刷新**：client 目前 5 分钟缓存；用户改 `pricing.json` 后 UI 不即时——
    加「刷新」入口或缩短缓存/轮询（低优先级）；
@@ -162,10 +181,10 @@ pricing 解析优先级（host 侧，每次请求实时解析）：
 3. **指示器模型归因**：面板已优先 host rounds 模型（ADR 1）；指示器仍用快照 provenance，
    可评估经宿主轻量通道取权威模型（权衡 LiveObservation 独立性，决策 2）；
 4. **大会话折叠**：26 万事件全量折叠正确但每请求全量计算 + 全量传输；轮次多时可
-   宿主侧截断（最近 N 轮）或缓存折叠结果（v0.4 HistoryStore 一并考虑）；
+   宿主侧截断（最近 N 轮）或缓存折叠结果（v0.5 HistoryStore 一并考虑）；
 5. **官方价格自动抓取**（远期）：借鉴 Ghost011118 的 6h 策略，第一版「可覆盖 + 可知晓」已达标。
 
-### v0.4.0 — 跨会话概览（可选）
+### v0.5.0 — 跨会话概览（可选）
 
 - 设置页历史视图：近 7/30 天成本与 Token 趋势、活跃会话数、缓存命中趋势；
 - 工作区分组 + 本地别名；

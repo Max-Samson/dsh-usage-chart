@@ -19,16 +19,17 @@
 
 > 图片仅使用虚构演示数据：不含真实会话内容、Token、成本、余额或 API Key。
 
-在 DeepSeek Harness Web UI 的**输入框下方**实时显示 token 用量、成本估算、模型与账户余额；点击展开**用量可视化图表面板**（参考 DeepSeek 开发者平台的用量页组织方式），全部使用零依赖 SVG 自绘，不引入任何图表库。
+在 DeepSeek Harness Web UI 的**输入框下方**实时显示 token 用量、成本估算、模型与账户余额；点击展开**用量可视化图表面板**（参考 DeepSeek 开发者平台的用量页组织方式），全部使用零依赖 SVG 自绘，不引入任何图表库。成本支持 **USD / CNY 多币种显示**与**实时汇率刷新**（v0.3）。
 
 ```
-▸ 输入 12.4M · 输出 86.2K · 缓存 72% · 成本 ≈$0.042 · demo-model · 余额 --
+▸ 输入 12.4M · 输出 86.2K · 缓存 72% · 成本 ≈$0.042 / ≈¥0.284 · demo-model · 余额 --
 ```
 
 点击 ▸ 展开面板：
 
 - **会话用量汇总** — 输入（未命中/命中）、输出、缓存命中率、上下文占用（均来自官方 adapter 上报的 `tokenUsage` / `contextPressure` 投影）
 - **成本估算** — 按官方刊例价（USD/1M tokens）估算并标注来源与核验日期；支持用户覆盖 `pricing.json`；未定价模型显式标记「未定价模型」
+- **多币种成本（v0.3）** — 成本区 USD/CNY 一键切换（选择在浏览器记住）；「刷新汇率」经宿主代理拉取最新 USD→CNY 汇率并立即重估（多源回退，断网沿用上次真实汇率）
 - **轮次用量** — 支持“总量 / 构成 / **成本**”三视角；柱顶叠加**总耗时点线**；成本突增轮次加**异常标记**（归因 chip：输出增长 / 上下文膨胀 / 缓存命中下降）；柱底缓存命中迷你刻度；悬浮**解释卡**（token 分桶 + 成本 + 模型 + 耗时/TTFT/TPS + 结束原因）；从宿主会话日志折叠完整历史，不可用时回退到本页观测增量
 - **成本徽章** — 每条助手消息尾部显示可关闭的「本轮 ≈ $0.00xx」徽章
 - **上下文压力条** — 指示器行内的细压力条（`contextPressure / contextWindow`），随占用升高由绿转红
@@ -41,6 +42,7 @@
 |---|---|---|
 | token 用量 | DSH 官方 adapter 上报的会话投影（`tokenUsage` / `contextPressure`） | ✅ 官方真实数据，实时更新 |
 | 成本 | 官方刊例价（内置表 + 可选用户覆盖 `pricing.json`）× adapter 上报用量 | ⚠️ 估算值，非官方账单；价格经宿主 `/pricing` 单点解析 |
+| 成本币种 / 汇率 | 宿主 `/meta` 下发配置 + `/rate` 实时汇率代理（多源回退、上次汇率持久化） | ✅ 实时汇率（不可达时回退内置源/上次成功值） |
 | 轮次明细 | 宿主会话日志折叠（`/usage`）：耗时 / TTFT / TPS / 模型归因 / 结束原因 / 每轮成本 | ✅ 官方事件流折叠 |
 | 余额 | 官方 `GET https://api.deepseek.com/user/balance` | ✅ 官方实时数据 |
 | 模型名 | adapter 上报的请求 provenance / `request/context` | ✅ 官方真实数据 |
@@ -72,7 +74,7 @@ dsh web --profile web                          # 启动 DSH Web（已在运行�
 
 ```sh
 # 方式①：显式指定目标版本
-dsh plugin --profile web add dsh-usage-chart@0.2.0
+dsh plugin --profile web add dsh-usage-chart@0.3.0
 # 方式②：先移除再重装（回到最新版）
 dsh plugin --profile web remove dsh-usage-chart
 dsh plugin --profile web add dsh-usage-chart
@@ -80,13 +82,12 @@ dsh plugin --profile web add dsh-usage-chart
 
 完成后重启 DSH Web。
 
-> ⚠️ **升级到 v0.2.0 必须重启 `dsh web` 进程**：宿主在启动时缓存插件代码（无热重载），
-> 新的 `/pricing` 路由与 `/usage` 的 `rounds` 响应只有重启后才生效；重启前指示器会
-> 隐藏成本位、面板提示「价格快照不可用」。详见 [更新日志](./CHANGELOG_ZH.md)。
+> ⚠️ **升级后必须重启 `dsh web` 进程**：宿主在启动时缓存插件代码（无热重载），
+> 新路由（如 `/pricing`、`/meta`、`/rate`）只有重启后才生效。详见 [更新日志](./CHANGELOG_ZH.md)。
 
 > ⚠️ **未全局安装 dsh（报 `dsh: command not found` / PowerShell `无法将“dsh”项识别为…`）？
 > 把上面每条 `dsh` 都写成 `npx --yes @deepseek-ai/dsh`**，例如
-> `npx --yes @deepseek-ai/dsh plugin --profile web add dsh-usage-chart@0.2.0`
+> `npx --yes @deepseek-ai/dsh plugin --profile web add dsh-usage-chart@0.3.0`
 > （原因与解法见 [FAQ](#常见问题faq) 第一条）。
 
 ### 方式二：从 GitHub 安装（源码构建）
@@ -145,6 +146,9 @@ dsh web --profile web
         apiKey: 'sk-...'        # 留空则回退到网页端/环境变量
         baseUrl: 'https://api.deepseek.com'
         # pricingFile: '/path/to/pricing.json'   # 可选：价格覆盖文件（默认 $DSH_HOME/data/dsh-usage-chart/pricing.json）
+        # currency: 'cny'        # 可选（v0.3）：成本显示币种 'usd'（默认）| 'cny'
+        # cnyPerUsd: 6.76        # 可选（v0.3）：cny 时使用的汇率（默认 6.76，可经界面「刷新汇率」实时更新）
+        # fxUrl: 'https://open.er-api.com/v6/latest/USD'   # 可选（v0.3）：自定义实时汇率源
 ```
 
 > 插件版本 < 0.1.1 时不读取网页端密钥：请用环境变量或上面的 `config.apiKey` 配置。
@@ -166,6 +170,17 @@ dsh web --profile web
 
 或 `{ "models": { "<model>": { … } } }`。`verifiedAt`（epoch 毫秒）可选，用于面板展示
 核验日期；未收录的模型会在 UI 中显式标记「未定价模型」，不会静默按 0 计。
+
+### 币种与汇率（v0.3+）
+
+成本默认以 **USD** 显示，可在面板成本区一键切换 **CNY**（选择在浏览器记住）。CNY 显示使用
+`config.cnyPerUsd` 汇率（默认 6.76），并可点击「刷新汇率」经宿主 `/dsh-usage-chart/rate`
+代理拉取最新 USD→CNY 汇率立即重估：
+
+- **多源回退**：自定义源（`config.fxUrl`）不可达时自动回退内置备用源（frankfurter.dev）；
+- **离线健壮性**：上次成功汇率持久化，断网刷新沿用上次真实汇率而非写死默认值；
+- **配置下发**：宿主 `/dsh-usage-chart/meta` 向 client 下发币种与汇率配置，价格注记跟随
+  显示币种并标注所用汇率。
 
 ### 卸载
 
@@ -253,12 +268,13 @@ node scripts/verify-render.mjs # 完整渲染验证（含明暗主题、中英�
 ```
 dsh-usage-chart/
 ├── package.json          # dsh.bundle（安装层）+ dsh.client（浏览器半区）+ exports["./client"]
-├── cordis.patch.yml      # 插件行插入（config.apiKey / baseUrl / pricingFile）
+├── cordis.patch.yml      # 插件行插入（config.apiKey / baseUrl / pricingFile / currency…）
 ├── build.mjs             # esbuild 双产物（+ client 纯模块测试束）+ tsc 类型声明（lib/types）
 ├── src/
 │   ├── index.ts          # host 半区：/balance 余额代理 + /usage 轮次折叠 + /pricing 价格快照
+│   │                     #          + /meta 币种配置下发 + /rate 实时汇率代理（多源回退）
 │   ├── pricing/
-│   │   ├── calc.ts       # 纯共享计算（成本分拆/格式化；两个半区 bundle 同一份）
+│   │   ├── calc.ts       # 纯共享计算（成本分拆/多币种格式化；两个半区 bundle 同一份）
 │   │   ├── source.ts     # PricingSource 接缝：builtin 刊例价 + pricing.json 文件适配器
 │   │   └── resolve.ts    # PricingResolver：覆盖 > 内置 > 回退，未知模型显式标记
 │   ├── usage/
@@ -273,6 +289,7 @@ dsh-usage-chart/
 │       ├── diagnose/anomaly.ts # 成本突增判定（图表与徽章共享的纯模块）
 │       ├── badge/CostBadge.tsx # assistant 消息尾部可关闭成本徽章
 │       ├── pricing-api.ts      # usePricing：/pricing 快照消费（client 唯一价格输入）
+│       ├── currency.ts         # 币种/汇率 store（/meta 配置 + 切换 + /rate 刷新）
 │       ├── balance.ts          # 余额读取 hook（经宿主代理）
 │       └── styles.ts           # 注入样式（<style data-plugin>）
 └── types/                # vendored 最小类型声明（DSH client 包未发布稳定版）
@@ -282,6 +299,7 @@ dsh-usage-chart/
 
 - token 与上下文数据来自当前 DSH 会话投影；每轮图表优先读取会话日志，读取失败时会明确标注并回退到本页观测。
 - 成本为官方刊例价估算（支持用户覆盖 `pricing.json`）；价格只在宿主解析，client 经 `/pricing` 快照消费，官方价格调整后可通过覆盖文件即时修正。
+- 币种与汇率：`/meta` 下发显示配置；`/rate` 经宿主代理拉取汇率（浏览器不直连外部汇率源）；汇率源强制 HTTPS（仅回环放行 HTTP）。
 - 余额经宿主同源路由代理（浏览器直连官方 API 有 CORS 与密钥暴露问题）。
 - Host 路由只接受同源 GET 请求，并为 JSON 响应设置 `no-store`；插件不会把 API Key 发送到浏览器。
 - 自定义 API 地址必须使用 HTTPS；仅回环地址允许 HTTP，便于连接本地代理。

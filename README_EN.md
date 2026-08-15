@@ -17,7 +17,7 @@ Both variants follow the DSH theme and in-app language setting.
 > Both screenshots use fictional demo data only. They contain no real session content,
 > token counts, costs, balances, or API keys.
 
-The plugin adds a compact indicator below the conversation composer. It shows input/output tokens, cache-hit ratio, estimated cost, active model, a slim context-pressure bar, and DeepSeek account balance. Click it to open a zero-dependency SVG dashboard with per-turn usage history — including a cost view, a duration overlay, anomaly markers, an explainer tooltip (tokens + cost + model + duration/TTFT/TPS + end reason), and a dismissible `≈ $0.00xx` badge on each assistant message.
+The plugin adds a compact indicator below the conversation composer. It shows input/output tokens, cache-hit ratio, estimated cost, active model, a slim context-pressure bar, and DeepSeek account balance. Click it to open a zero-dependency SVG dashboard with per-turn usage history — including a cost view, a duration overlay, anomaly markers, an explainer tooltip (tokens + cost + model + duration/TTFT/TPS + end reason), a dismissible `≈ $0.00xx` badge on each assistant message, and multi-currency costs with a live USD→CNY rate refresh (v0.3).
 
 The interface supports Chinese and English and follows the DSH in-app language setting. Browser language seeds the initial display only when the Host has not exposed a setting yet. Language changes are applied without reloading the plugin.
 
@@ -43,7 +43,7 @@ or **remove then re-add**:
 
 ```sh
 # Option ①: pin the target version explicitly
-dsh plugin --profile web add dsh-usage-chart@0.2.0
+dsh plugin --profile web add dsh-usage-chart@0.3.0
 # Option ②: remove, then re-add (back to latest)
 dsh plugin --profile web remove dsh-usage-chart
 dsh plugin --profile web add dsh-usage-chart
@@ -51,16 +51,14 @@ dsh plugin --profile web add dsh-usage-chart
 
 Then restart DSH Web.
 
-> ⚠️ **Upgrading to v0.2.0 requires restarting the `dsh web` process.** The Host caches
-> plugin code in memory (no hot reload): the new `/pricing` route and the `rounds`-shaped
-> `/usage` response are only served after a restart; until then the indicator omits the
-> cost segment and the panel shows "Price snapshot unavailable". See the
-> [Changelog](./CHANGELOG.md).
+> ⚠️ **Restarting the `dsh web` process is required after any upgrade.** The Host caches
+> plugin code in memory (no hot reload): new routes (e.g. `/pricing`, `/meta`, `/rate`)
+> are only served after a restart. See the [Changelog](./CHANGELOG.md).
 
 > ⚠️ **No global `dsh` installed (`dsh: command not found` / PowerShell
 > `The term 'dsh' is not recognized…`)?** Prefix every `dsh` above with
 > `npx --yes @deepseek-ai/dsh`, e.g.
-> `npx --yes @deepseek-ai/dsh plugin --profile web add dsh-usage-chart@0.2.0`
+> `npx --yes @deepseek-ai/dsh plugin --profile web add dsh-usage-chart@0.3.0`
 > (see FAQ item 1).
 
 ### Option 2: install from GitHub (source build)
@@ -142,6 +140,21 @@ Models not covered anywhere are explicitly marked "Unpriced model" in the UI —
 silently billed as zero. To point at another file, set `config.pricingFile` in
 `cordis.patch.yml`.
 
+### Display currency and live FX rate (v0.3+)
+
+Costs are shown in **USD** by default; the cost section has a one-click **CNY** toggle
+(remembered in the browser). CNY display uses `config.cnyPerUsd` (default 6.76) and a
+"Refresh rate" button that fetches the latest USD→CNY rate through the Host
+`/dsh-usage-chart/rate` proxy and re-estimates immediately:
+
+- **Multi-source fallback**: when the custom source (`config.fxUrl`) is unreachable, a
+  built-in fallback source (frankfurter.dev) is tried;
+- **Offline resilience**: the last successful rate is persisted, so a refresh while
+  offline keeps the last real rate instead of the fixed default;
+- **Config distribution**: the Host `/dsh-usage-chart/meta` route sends the display
+  currency and rate config to the client; price notes follow the display currency and
+  show the applied rate.
+
 ### Uninstall
 
 > ⚠️ **No global `dsh` installed (`dsh: command not found` / PowerShell
@@ -193,6 +206,7 @@ for the maintainer to publish.
 | Token usage | DSH `tokenUsage` / `contextPressure` projections | Session-scoped, updated by the adapter |
 | Per-round history | DSH Host session event log (`/usage` fold) | Duration / TTFT / TPS / model / end reason / per-round cost; falls back to page-observed deltas when unavailable |
 | Cost | Published DeepSeek price (builtin + optional `pricing.json` override) × reported usage | Estimate, not an invoice; resolved once on the Host, consumed via the `/pricing` snapshot |
+| Display currency / FX rate | Host `/meta` config + `/rate` live-rate proxy | Live rate with multi-source fallback and last-rate persistence |
 | Balance | DeepSeek `GET /user/balance` | Proxied by the Host with `no-store` responses |
 
 ## Development
