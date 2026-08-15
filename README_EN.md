@@ -17,7 +17,7 @@ Both variants follow the DSH theme and in-app language setting.
 > Both screenshots use fictional demo data only. They contain no real session content,
 > token counts, costs, balances, or API keys.
 
-The plugin adds a compact indicator below the conversation composer. It shows input/output tokens, cache-hit ratio, estimated cost, active model, a slim context-pressure bar, and DeepSeek account balance. Click it to open a zero-dependency SVG dashboard with per-turn usage history — including a cost view, a duration overlay, anomaly markers, an explainer tooltip (tokens + cost + model + duration/TTFT/TPS + end reason), a dismissible `≈ $0.00xx` badge on each assistant message, and multi-currency costs with a live USD→CNY rate refresh (v0.3).
+The plugin adds a compact indicator below the conversation composer. It shows input/output tokens, cache-hit ratio, estimated cost, active model, a slim context-pressure bar, and DeepSeek account balance. Click it to open a zero-dependency SVG dashboard with per-turn usage history — including a cost view, a duration overlay, anomaly markers, an explainer tooltip (tokens + cost + model + duration/TTFT/TPS + end reason), horizontally scrollable per-round bars (all rounds, fixed slim bar width, auto-scroll to latest), a dismissible `≈ $0.00xx` badge on each assistant message, and multi-currency costs with a live USD→CNY rate refresh (v0.3).
 
 The interface supports Chinese and English and follows the DSH in-app language setting. Browser language seeds the initial display only when the Host has not exposed a setting yet. Language changes are applied without reloading the plugin.
 

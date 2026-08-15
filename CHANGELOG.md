@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). 中文版见 [CHANGELOG_ZH.md](./CHANGELOG_ZH.md).
 
+## [1.0.0] - 2026-08-15
+
+First complete release — the in-session usage interpreter is feature-complete (per-round chart with full-history horizontal scroll + cost/timing/anomaly explainer + multi-currency costs with live rates + account balance).
+
+### Changed
+
+- Per-round chart no longer truncates to the latest 12 rounds: **all** rounds render into a horizontally scrollable area with a fixed slim bar width (30px), so bars stay constant-width and never look crowded. It auto-scrolls to the latest round, and arrow buttons + edge fades appear when content overflows; the scrollbar is slimmed down.
+- Per-bar value labels adapt to density: in scrollable (dense) mode only the current round keeps its top-of-bar value (details stay in the hover explainer card); otherwise overly long labels (e.g. `$0.0013`, `123.4K`) are elided so neighbouring labels never overlap.
+- Chart minimum width adapts to the panel width: short histories fill/center without stretching bar widths; the tooltip follows the active bar across scrolling (content coordinate − scroll offset, clamped to the visible area).
+
+### Fixed
+
+- The tooltip could not be positioned correctly once the chart could scroll; it now tracks the bar precisely at any scroll position.
+- Short histories could overflow on narrow panels; the adaptive minimum width removes the needless scroll.
+- The balance no-key test now isolates `$DEEPSEEK_API_KEY`, so the suite passes on hosts that have the key in the environment; added coverage for the env fallback itself.
+
 ## [0.3.0] - 2026-08-15
 
 ### Added
