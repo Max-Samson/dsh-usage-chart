@@ -5,3 +5,4 @@ lib/
 temp
 .pnpm-store/
 artifacts/
+.dsh
