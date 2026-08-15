@@ -25,7 +25,7 @@ export interface UiCopy {
   costEstimate: string
   inputCost: string
   outputCost: string
-  pricingNote: (miss: number, hit: number, output: number, source: string, verified: string) => string
+  pricingNote: (miss: string, hit: string, output: string, currencySuffix: string, source: string, verified: string) => string
   pricingSourceLabel: string
   pricingVerifiedLabel: string
   pricingFileLabel: string
@@ -50,6 +50,14 @@ export interface UiCopy {
   balanceEnough: string
   balanceLow: string
   currency: string
+  currencyToggleLabel: string
+  currencyToggleUsdTitle: string
+  currencyToggleCnyTitle: string
+  refreshRate: string
+  refreshingRate: string
+  refreshRateTitle: string
+  rateLive: (rate: number, time: string) => string
+  rateError: (rate: number) => string
   toppedUp: string
   granted: string
   noApiKey: string
@@ -96,14 +104,21 @@ const COPY: Record<UiLocale, UiCopy> = {
     usageDetails: '会话用量详情', sessionUsage: '会话用量', billedInput: '计费输入', cacheHit: '缓存命中', contextUsage: '上下文占用', unavailable: '暂无',
     sessionEmpty: '发送消息后，这里会显示当前会话的 Token 用量。',
     costEstimate: '成本估算', inputCost: '输入', outputCost: '输出',
-    pricingNote: (miss, hit, output, source, verified) => `刊例价：未命中输入 ${miss}/1M，命中输入 ${hit}/1M，输出 ${output}/1M USD。来源 ${source}${verified}。估算值，不代表官方账单。`,
+    pricingNote: (miss, hit, output, currencySuffix, source, verified) => `刊例价：未命中输入 ${miss}/1M，命中输入 ${hit}/1M，输出 ${output}/1M ${currencySuffix}。来源 ${source}${verified}。估算值，不代表官方账单。`,
     pricingSourceLabel: '价格来源', pricingVerifiedLabel: '核验于', pricingFileLabel: '覆盖文件', unknownModel: '未定价模型', costUnavailable: '价格快照不可用，无法估算成本。',
     roundUsage: '轮次用量', chartDisplay: '图表显示方式', totalMode: '总量', compositionMode: '构成', costMode: '成本',
     totalModeTitle: '按实际 Token 总量比较各轮消耗', compositionModeTitle: '将每轮统一为 100%，比较 Token 构成', costModeTitle: '按各桶 × 单价堆叠成本，柱顶为美元', refresh: '刷新',
     roundExplainer: '每根柱代表一轮提问与回答', totalExplainer: '柱高表示本轮 Token 总量', compositionExplainer: '每根柱统一为 100%，仅比较 Token 构成', costExplainer: '柱高表示本轮估算成本（按刊例价）',
     roundEmpty: '发送消息后，这里会按轮次绘制 Token 用量。',
     accountBalance: '账户余额', loadingBalance: '正在查询账户余额', balanceEnough: '余额充足', balanceLow: '余额不足',
-    currency: '币种', toppedUp: '充值', granted: '赠送', noApiKey: '未配置 DEEPSEEK_API_KEY（或插件 config.apiKey），无法查询余额。',
+    currency: '币种',
+    currencyToggleLabel: '成本显示币种',
+    currencyToggleUsdTitle: '成本按美元（USD）显示，选择会在本浏览器中记住',
+    currencyToggleCnyTitle: '成本按人民币（CNY）显示，选择会在本浏览器中记住',
+    refreshRate: '刷新汇率', refreshingRate: '获取中…', refreshRateTitle: '获取最新汇率并重新估算（本次会话有效）',
+    rateLive: (rate, time) => `实时汇率已更新：1 USD = ${rate} CNY（${time} 获取，本次会话有效）`,
+    rateError: (rate) => `实时汇率获取失败，沿用 1 USD = ${rate} CNY。`,
+    toppedUp: '充值', granted: '赠送', noApiKey: '未配置 DEEPSEEK_API_KEY（或插件 config.apiKey），无法查询余额。',
     balanceError: (message) => `余额查询失败：${message}`, unknown: '未知错误', retry: '重试', balanceIdle: '点击输入框下方的余额信息即可查询。',
     historySource: (truncated) => `来自会话日志，完整历史${truncated ? '，图表显示最近 12 轮' : ''}`,
     historyFallback: (error) => `宿主历史不可用（${error}），已回退到本页观测增量。`, historyLoading: '加载会话日志历史…',
@@ -131,14 +146,21 @@ const COPY: Record<UiLocale, UiCopy> = {
     usageDetails: 'Session usage details', sessionUsage: 'Session usage', billedInput: 'Billed input', cacheHit: 'Cache hit', contextUsage: 'Context used', unavailable: 'N/A',
     sessionEmpty: 'Token usage will appear after you send a message.',
     costEstimate: 'Estimated cost', inputCost: 'Input', outputCost: 'Output',
-    pricingNote: (miss, hit, output, source, verified) => `List price: cache-miss input ${miss}/1M, cache-hit input ${hit}/1M, output ${output}/1M USD. Source: ${source}${verified}. Estimate only, not an official bill.`,
+    pricingNote: (miss, hit, output, currencySuffix, source, verified) => `List price: cache-miss input ${miss}/1M, cache-hit input ${hit}/1M, output ${output}/1M ${currencySuffix}. Source: ${source}${verified}. Estimate only, not an official bill.`,
     pricingSourceLabel: 'Price source', pricingVerifiedLabel: 'Verified', pricingFileLabel: 'Override file', unknownModel: 'Unpriced model', costUnavailable: 'Price snapshot unavailable; cost cannot be estimated.',
     roundUsage: 'Usage by round', chartDisplay: 'Chart display', totalMode: 'Total', compositionMode: 'Mix', costMode: 'Cost',
     totalModeTitle: 'Compare rounds by actual Token usage', compositionModeTitle: 'Normalize each round to 100% and compare Token mix', costModeTitle: 'Stack cost by bucket × unit price; bar top shows USD', refresh: 'Refresh',
     roundExplainer: 'Each bar represents one prompt and response', totalExplainer: 'Bar height shows total Tokens for the round', compositionExplainer: 'Each bar is normalized to 100% to compare Token mix', costExplainer: 'Bar height shows the estimated cost of the round',
     roundEmpty: 'Per-round Token usage will appear after you send a message.',
     accountBalance: 'Account balance', loadingBalance: 'Loading account balance', balanceEnough: 'Available', balanceLow: 'Insufficient',
-    currency: 'Currency', toppedUp: 'Topped up', granted: 'Granted', noApiKey: 'DEEPSEEK_API_KEY (or plugin config.apiKey) is not configured, so the balance cannot be queried.',
+    currency: 'Currency',
+    currencyToggleLabel: 'Cost display currency',
+    currencyToggleUsdTitle: 'Show cost in USD; remembered in this browser',
+    currencyToggleCnyTitle: 'Show cost in CNY; remembered in this browser',
+    refreshRate: 'Refresh rate', refreshingRate: 'Fetching…', refreshRateTitle: 'Fetch the latest exchange rate and re-estimate (valid for this session)',
+    rateLive: (rate, time) => `Live rate updated: 1 USD = ${rate} CNY (fetched at ${time}, valid for this session)`,
+    rateError: (rate) => `Could not fetch the live rate; keeping 1 USD = ${rate} CNY.`,
+    toppedUp: 'Topped up', granted: 'Granted', noApiKey: 'DEEPSEEK_API_KEY (or plugin config.apiKey) is not configured, so the balance cannot be queried.',
     balanceError: (message) => `Balance query failed: ${message}`, unknown: 'Unknown error', retry: 'Retry', balanceIdle: 'Select the balance below the composer to query it.',
     historySource: (truncated) => `Full history from the session log${truncated ? '; showing the latest 12 rounds' : ''}`,
     historyFallback: (error) => `Host history unavailable (${error}); showing usage observed on this page.`, historyLoading: 'Loading session history…',

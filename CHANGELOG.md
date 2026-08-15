@@ -2,6 +2,34 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). 中文版见 [CHANGELOG_ZH.md](./CHANGELOG_ZH.md).
 
+## [Unreleased]
+
+### Added
+
+- Cost display currency: `config.currency` (`'usd'` default, `'cny'`) and `config.cnyPerUsd`
+  exchange rate (default `6.76`); costs convert at the configured rate and render with `¥`.
+- A USD/CNY toggle in the cost-estimate section: switching updates every cost figure in the
+  indicator and dashboard immediately, and the choice is remembered in the browser
+  (`localStorage`), overriding the config default.
+- A rate-refresh control in the cost-estimate section: it fetches the latest USD→CNY rate
+  through a new same-origin host proxy route (`/dsh-usage-chart/rate`; source configurable
+  via `config.fxUrl`, default open.er-api.com), re-estimates CNY costs immediately, and
+  reports the fetch time; failures keep the previous rate and are reported inline.
+- `/dsh-usage-chart/meta` host route that serves the display-currency config to the client.
+
+### Changed
+
+- The per-model price note follows the display currency and notes the applied exchange rate
+  (e.g. `CNY（1 USD ≈ 6.76 CNY）`).
+- Visual probe scripts now scope the chart-mode toggle to the round-usage section, since the
+  panel contains a second `duc-view-toggle` group (currency) ahead of it.
+
+### Fixed
+
+- Client slot registration now waits for slot declarations via `ctx.slots.inject` instead of
+  registering directly. The direct call depends on loader application order and throws
+  `slot "…" is not declared` at boot once other plugins change that order.
+
 ## [0.2.0] - 2026-08-15
 
 ### Added

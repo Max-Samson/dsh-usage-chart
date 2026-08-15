@@ -90,3 +90,47 @@ export function formatDuration(ms: number | null | undefined): string {
   const s = Math.round(ms / 1_000)
   return `${Math.floor(s / 60)}m ${s % 60}s`
 }
+
+// ── 成本显示币种（PR #5 移植）───────────────────────────────────────────────
+// 转换只作用于「展示层」：内部成本始终以 USD 计算，formatMoney/formatPricePerM
+// 负责按显示币种换算与格式化；汇率来源见 host /rate 与 client currency.ts。
+
+export type DisplayCurrency = 'usd' | 'cny'
+
+/** 默认美元兑人民币汇率（配置缺失时使用）。 */
+export const DEFAULT_CNY_PER_USD = 6.76
+
+/** 归一化显示币种：仅 'cny' 有效，其余回退 'usd'。 */
+export function normalizeCurrency(value: string | undefined): DisplayCurrency {
+  return value === 'cny' ? 'cny' : 'usd'
+}
+
+/** 归一化汇率：正有限数才采用，否则回退默认值。 */
+export function normalizeCnyPerUsd(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value
+    : DEFAULT_CNY_PER_USD
+}
+
+/** USD 金额 → 显示币种金额。 */
+export function toDisplayAmount(usd: number, currency: DisplayCurrency, cnyPerUsd: number): number {
+  return currency === 'cny' ? usd * cnyPerUsd : usd
+}
+
+/** 金额格式化（¥ / $，分级小数位）。 */
+export function formatMoney(usd: number, currency: DisplayCurrency, cnyPerUsd: number): string {
+  const amount = toDisplayAmount(usd, currency, cnyPerUsd)
+  const symbol = currency === 'cny' ? '¥' : '$'
+  if (!Number.isFinite(amount) || amount <= 0) return `${symbol}0`
+  if (amount < 0.01) return `${symbol}${amount.toFixed(4)}`
+  if (amount < 100) return `${symbol}${amount.toFixed(3)}`
+  return `${symbol}${amount.toFixed(2)}`
+}
+
+/** 每百万 tokens 单价格式化（跟随显示币种）。 */
+export function formatPricePerM(usd: number, currency: DisplayCurrency, cnyPerUsd: number): string {
+  const amount = toDisplayAmount(usd, currency, cnyPerUsd)
+  if (currency === 'usd') return String(usd)
+  if (amount < 0.1) return amount.toFixed(4)
+  return amount.toFixed(3)
+}

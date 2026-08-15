@@ -1,7 +1,7 @@
 /**
  * 宿主（Node）半区：dsh-usage-chart
  *
- * 在同源 HTTP 服务上注册三个路由：
+ * 在同源 HTTP 服务上注册五个路由：
  *  - `/dsh-usage-chart/balance` — 代理 DeepSeek 官方 `GET /user/balance`
  *    （浏览器直连会被 CORS 拦截，且 API Key 不应暴露给浏览器）。
  *  - `/dsh-usage-chart/usage`   — 读取会话日志（adapter 上报的完整事件流），
@@ -9,23 +9,32 @@
  *    模型归因 + 结束原因 + 每轮成本分拆）。
  *  - `/dsh-usage-chart/pricing` — 价格解析快照（内置刊例价 + 用户覆盖
  *    pricing.json），client 实时成本计算的唯一价格输入（ADR 2）。
+ *  - `/dsh-usage-chart/meta`    — 下发成本显示币种与汇率配置。
+ *  - `/dsh-usage-chart/rate`    — 代理实时 USD→CNY 汇率查询。
  */
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { Context, CredentialsService } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { normalizeCnyPerUsd, normalizeCurrency } from './pricing/calc.ts'
 
 // ── 共享纯计算（client 同源 bundle）────────────────────────────────────────
 export {
   ZERO_BUCKETS,
   billedInputTokens,
   cacheHitPercent,
+  DEFAULT_CNY_PER_USD,
   costSplit,
   formatDuration,
+  formatMoney,
+  formatPricePerM,
   formatTokens,
   formatUsd,
+  normalizeCnyPerUsd,
+  normalizeCurrency,
+  toDisplayAmount,
 } from './pricing/calc.ts'
-export type { CostSplit, ModelPricing, TokenUsageBuckets } from './pricing/calc.ts'
+export type { CostSplit, DisplayCurrency, ModelPricing, TokenUsageBuckets } from './pricing/calc.ts'
 
 // ── 价格来源接缝与解析器（host 专用）───────────────────────────────────────
 import {
@@ -72,6 +81,12 @@ export interface Config {
    * `$DSH_HOME/data/dsh-usage-chart/pricing.json`（无 DSH_HOME 时 `~/.dsh/...`）。
    */
   pricingFile?: string
+  /** 可选：成本显示币种，'usd'（默认）或 'cny'。 */
+  currency?: string
+  /** 可选：currency: 'cny' 时的美元兑人民币汇率，默认 6.76。 */
+  cnyPerUsd?: number
+  /** 可选：实时汇率数据源 URL（须返回 `{ rates: { CNY: number } }` 结构），默认 open.er-api.com。 */
+  fxUrl?: string
 }
 
 interface BalanceInfo {
@@ -92,6 +107,8 @@ export interface BalanceResponse {
 }
 
 const DEFAULT_BASE_URL = 'https://api.deepseek.com'
+
+const DEFAULT_FX_URL = 'https://open.er-api.com/v6/latest/USD'
 
 /** 默认价格覆盖文件：`$DSH_HOME/data/dsh-usage-chart/pricing.json`。 */
 export function defaultPricingFile(env: NodeJS.ProcessEnv = process.env, home = homedir()): string {
@@ -232,7 +249,42 @@ async function fetchBalance(apiKey: string, baseUrl: string): Promise<BalanceRes
 }
 
 /**
- * 插件入口：注册余额代理 / 用量折叠 / 价格快照路由。
+ * 拉取实时 USD→CNY 汇率（open.er-api.com 或 config.fxUrl）。
+ * 任何失败都返回结构化错误，不抛异常。
+ */
+async function fetchLiveRate(fxUrl: string): Promise<{
+  ok: boolean
+  rate?: number
+  fetchedAt?: number
+  reason?: 'request-failed' | 'bad-response'
+  message?: string
+}> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 8_000)
+  try {
+    const res = await fetch(fxUrl, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    })
+    if (!res.ok) {
+      return { ok: false, reason: 'request-failed', message: `汇率源返回 HTTP ${res.status}` }
+    }
+    const data = (await res.json()) as { rates?: { CNY?: unknown } }
+    const rate = data.rates?.CNY
+    if (typeof rate !== 'number' || !Number.isFinite(rate) || rate <= 0) {
+      return { ok: false, reason: 'bad-response', message: '汇率源未返回有效的 rates.CNY' }
+    }
+    return { ok: true, rate, fetchedAt: Date.now() }
+  } catch (error) {
+    return { ok: false, reason: 'request-failed', message: error instanceof Error ? error.message : String(error) }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * 插件入口：注册余额代理 / 用量折叠 / 价格快照 / 显示配置 / 汇率代理路由。
  * @param ctx - 宿主 Context（cordis）。
  * @param config - 行配置（cordis.patch.yml 的 config）。
  */
@@ -305,6 +357,29 @@ export function apply(ctx: Context, config: Config = {}): void {
       writeJson(res, 200, { ok: true, sessionId, totals, rounds })
     },
   }), 'dsh-usage-chart: usage route')
+
+  const displayCurrency = normalizeCurrency(config.currency)
+  const cnyPerUsd = normalizeCnyPerUsd(config.cnyPerUsd)
+  const fxUrl = normalizeBaseUrl(config.fxUrl === undefined || config.fxUrl === '' ? DEFAULT_FX_URL : config.fxUrl)
+
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'exact',
+    path: '/dsh-usage-chart/meta',
+    async handler(req: IncomingMessage, res: ServerResponse) {
+      if (!guardRequest(req, res)) return
+      writeJson(res, 200, { ok: true, currency: displayCurrency, cnyPerUsd })
+    },
+  }), 'dsh-usage-chart: meta route')
+
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'exact',
+    path: '/dsh-usage-chart/rate',
+    async handler(req: IncomingMessage, res: ServerResponse) {
+      if (!guardRequest(req, res)) return
+      const result = await fetchLiveRate(fxUrl)
+      writeJson(res, 200, result)
+    },
+  }), 'dsh-usage-chart: rate route')
 
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',

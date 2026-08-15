@@ -10,6 +10,7 @@
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import { CostBadge } from './badge/CostBadge.tsx'
 import { UsageIndicator } from './UsageIndicator.tsx'
+import { initDisplayMeta } from './currency.ts'
 import { injectPluginCss } from './styles.ts'
 import { setUiLocale } from './i18n.ts'
 
@@ -21,6 +22,9 @@ export const inject = ['slots', 'locale']
 export function apply(ctx: ClientContext): void {
   injectPluginCss()
 
+  // 成本显示币种：读 /meta 配置 + localStorage 用户选择。
+  initDisplayMeta()
+
   // 活动语言：初始取平台快照（含宿主设置与浏览器推导），此后随快照切换。
   // 注意：locale.subscribe 的监听器无参调用（publish 里 fn()），需自行重读快照。
   const syncLocale = (): void => {
@@ -29,7 +33,9 @@ export function apply(ctx: ClientContext): void {
   syncLocale()
   ctx.effect(() => ctx.locale.subscribe(syncLocale), 'dsh-usage-chart: locale subscription')
 
-  ctx.slots.register(
+  // 槽位注册等待声明（slots.inject）：直接 register 依赖加载顺序，顺序变化时
+  // 会抛 `slot "…" is not declared`；inject 在声明出现时回调并经 fiber 卸载清理。
+  ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register(
     {
       name: 'conversation.composer.dock',
       id: 'dsh-usage-chart',
@@ -37,9 +43,9 @@ export function apply(ctx: ClientContext): void {
       registrant: 'dsh-usage-chart',
     },
     UsageIndicator,
-  )
+  ))
 
-  ctx.slots.register(
+  ctx.slots.inject('conversation.chat.assistant-actions', () => ctx.slots.register(
     {
       name: 'conversation.chat.assistant-actions',
       id: 'dsh-usage-chart',
@@ -47,5 +53,5 @@ export function apply(ctx: ClientContext): void {
       registrant: 'dsh-usage-chart',
     },
     CostBadge,
-  )
+  ))
 }
