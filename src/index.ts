@@ -8,8 +8,10 @@
  *    经 RoundFold 折叠出每轮用量明细（token 四桶 + 耗时/TTFT/TPS +
  *    模型归因 + 结束原因 + 每轮成本分拆）。
  *  - `/dsh-usage-chart/pricing` — 价格解析快照（内置刊例价 + 用户覆盖
- *    pricing.json），client 实时成本计算的唯一价格输入（ADR 2）。
- *  - `/dsh-usage-chart/meta`    — 下发成本显示币种与汇率配置。
+ *    pricing.json，CNY/USD 双币种 / 1M tokens，区分高峰/空闲时段），client 实时
+ *    成本计算的唯一价格输入（ADR 2）。
+ *  - `/dsh-usage-chart/meta`    — 下发成本显示币种与汇率配置（成本按所选币种的
+ *    官方刊例价直接计算，汇率仅作参考注记）。
  *  - `/dsh-usage-chart/rate`    — 代理实时 USD→CNY 汇率查询。
  */
 import { homedir } from 'node:os'
@@ -25,16 +27,26 @@ export {
   cacheHitPercent,
   DEFAULT_CNY_PER_USD,
   costSplit,
+  costSplitAt,
+  formatCny,
   formatDuration,
   formatMoney,
   formatPricePerM,
   formatTokens,
-  formatUsd,
+  isPeakHour,
   normalizeCnyPerUsd,
   normalizeCurrency,
-  toDisplayAmount,
+  tierAt,
 } from './pricing/calc.ts'
-export type { CostSplit, DisplayCurrency, ModelPricing, TokenUsageBuckets } from './pricing/calc.ts'
+export type {
+  BucketPrices,
+  CostCurrency,
+  CostSplit,
+  ModelPricing,
+  PriceTier,
+  PriceTierId,
+  TokenUsageBuckets,
+} from './pricing/calc.ts'
 
 // ── 价格来源接缝与解析器（host 专用）───────────────────────────────────────
 import {

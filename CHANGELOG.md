@@ -2,6 +2,31 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). 中文版见 [CHANGELOG_ZH.md](./CHANGELOG_ZH.md).
 
+## [1.0.1] - 2026-08-17
+
+Billing updated to the latest DeepSeek pricing (official pricing pages, fetched 2026-08-17): prices are now quoted in **two currencies — CNY (Chinese page) and USD (English page) — per 1M tokens** with **peak / off-peak tiers** — peak hours (Beijing time 09:00–12:00 and 14:00–18:00, i.e. UTC 01:00–04:00 and 06:00–10:00) are billed at 2× the off-peak rate.
+
+### Added
+
+- **Peak/off-peak tiered billing**: the builtin price table stores both `peak` and `offPeak` unit prices per model; each round's cost is billed with the tier of its start time (`tierAt` resolves Beijing time = UTC+8). Unknown timestamps fall back to the peak tier (conservative estimate).
+- **Official dual-currency pricing**: each tier carries both the official CNY quote and the official USD quote; costs are computed with the list price of the selected display currency — **no FX conversion**, consistent with the official bill. The CNY/USD toggle now drives the indicator, the panel, the chart cost view and the cost badge.
+- `pricing.json` now accepts the dual-currency tiered shape `{ "peak": { "cny": {…}, "usd": {…} }, "offPeak": {…} }`; legacy shapes are still accepted (single-currency tiers or the flat shape are treated as CNY, with USD derived at the default rate 6.76).
+- New exports: `costSplitAt`, `tierAt`, `isPeakHour`, `formatCny`, and the `CostCurrency` / `PriceTier` / `PriceTierId` / `BucketPrices` types.
+- The cost note in the panel now shows both tiers: e.g. cache-miss input `1.5/3.0` (off-peak/peak) in the selected currency.
+- **Live billing-tier tag**: the panel's session-usage header shows a red (peak) / green (off-peak) tag for the current billing period (Beijing time, auto-flips at hour boundaries), and each round's tooltip shows its own billing tier.
+- **Per-round cost always visible**: in the cost chart view every bar shows its own cost value (not only the current round), and the observed-rounds fallback (no host history) now derives per-round cost client-side from the `/pricing` snapshot + per-turn model/start time, so the cost view works even without host history.
+
+### Changed
+
+- Builtin list price updated to the official prices (flash: CNY off-peak 1.5 / 0.05 / 4.5, peak 3.0 / 0.10 / 9.0; USD off-peak 0.22 / 0.007 / 0.66, peak 0.44 / 0.014 / 1.32; pro: CNY off-peak 4.5 / 0.15 / 13.5, peak 9.0 / 0.30 / 27.0; USD off-peak 0.66 / 0.022 / 1.98, peak 1.32 / 0.044 / 3.96 — miss input / hit input / output); `BUILTIN_VERIFIED_AT` updated to 2026-08-17.
+- Cost computation is now currency-parameterized: `costSplit(usage, pricing, tier, currency)` and `costSplitAt(usage, pricing, timeMs, currency)` return a currency-neutral `CostSplit` (`input` / `cacheRead` / `output` / `total`) in the requested currency. `formatMoney` / `formatPricePerM` drop the FX-rate parameter (amounts are already in the display currency); `toDisplayAmount` is removed. `estimateCost` keeps returning `{ cny, estimated }` (official CNY prices).
+- `foldRounds` bills each round with the tier of its `turn/start` time (fallback: `turn/end`, then peak) and publishes **both** `cny` and `usd` cost splits in the `/usage` payload, so the client can switch currencies without re-deriving.
+- The FX rate (`config.cnyPerUsd`, `/rate`, "Refresh rate") is now informational only ("1 USD ≈ X CNY" note); costs never depend on it for official models.
+
+### Fixed
+
+- The old builtin table (single-currency USD, flat price) no longer matched the official tiered billing in either currency, so costs were stale; the whole pipeline now follows the current official pricing pages (CNY + USD).
+
 ## [1.0.0] - 2026-08-15
 
 First complete release — the in-session usage interpreter is feature-complete (per-round chart with full-history horizontal scroll + cost/timing/anomaly explainer + multi-currency costs with live rates + account balance).

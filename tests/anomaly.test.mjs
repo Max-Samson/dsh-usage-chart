@@ -15,7 +15,11 @@ function round(turn, buckets, costTotal, extra = {}) {
     ttftMs: null,
     outputTps: null,
     endReason: null,
-    cost: { inputUsd: 0, cacheReadUsd: 0, outputUsd: 0, totalUsd: costTotal, estimated: false, unknownModel: false, source: 'builtin', verifiedAt: null },
+    cost: {
+      cny: { input: 0, cacheRead: 0, output: 0, total: costTotal },
+      usd: { input: 0, cacheRead: 0, output: 0, total: costTotal },
+      estimated: false, unknownModel: false, source: 'builtin', verifiedAt: null,
+    },
     ...extra,
   }
 }
@@ -34,7 +38,7 @@ test('flagAnomalies flags cost spikes with attributed reasons', () => {
   const flags = flagAnomalies(rounds)
   assert.equal(flags.length, 1)
   assert.equal(flags[0].turn, 4)
-  assert.equal(flags[0].costUsd, 0.01)
+  assert.equal(flags[0].costCny, 0.01)
   assert.deepEqual(new Set(flags[0].reasons), new Set(['output-growth', 'context-bloat', 'cache-hit-drop']))
 })
 

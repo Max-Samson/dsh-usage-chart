@@ -12,7 +12,8 @@
 import { readFile } from 'node:fs/promises'
 import { watch } from 'node:fs'
 import { dirname } from 'node:path'
-import type { ModelPricing } from './calc.ts'
+import type { BucketPrices, ModelPricing, PriceTier } from './calc.ts'
+import { DEFAULT_CNY_PER_USD } from './calc.ts'
 
 /** 价格来源标识。 */
 export type PricingSourceId = 'builtin' | 'file'
@@ -28,14 +29,39 @@ export interface PricingSource {
   knownModels(): readonly string[]
 }
 
-/** 当前官方在售模型定价表（USD / 1M tokens）。 */
+/**
+ * 当前官方在售模型定价表（双币种 / 1M tokens，区分高峰/空闲时段）。
+ * 来源：官方定价页（2026-08-17 抓取）
+ *  - 中文页 https://api-docs.deepseek.com/zh-cn/quick_start/pricing（CNY 报价）
+ *  - 英文页 https://api-docs.deepseek.com/quick_start/pricing（USD 报价）
+ * 高峰时段（北京时间 09:00–12:00、14:00–18:00 = UTC 01:00–04:00、06:00–10:00）
+ * 价格为空闲时段的两倍。
+ */
 export const BUILTIN_PRICING: Record<string, ModelPricing> = {
-  'deepseek-v4-flash': { cacheMissInput: 0.14, cacheHitInput: 0.0028, output: 0.28 },
-  'deepseek-v4-pro': { cacheMissInput: 0.435, cacheHitInput: 0.003625, output: 0.87 },
+  'deepseek-v4-flash': {
+    offPeak: {
+      cny: { cacheMissInput: 1.5, cacheHitInput: 0.05, output: 4.5 },
+      usd: { cacheMissInput: 0.22, cacheHitInput: 0.007, output: 0.66 },
+    },
+    peak: {
+      cny: { cacheMissInput: 3.0, cacheHitInput: 0.10, output: 9.0 },
+      usd: { cacheMissInput: 0.44, cacheHitInput: 0.014, output: 1.32 },
+    },
+  },
+  'deepseek-v4-pro': {
+    offPeak: {
+      cny: { cacheMissInput: 4.5, cacheHitInput: 0.15, output: 13.5 },
+      usd: { cacheMissInput: 0.66, cacheHitInput: 0.022, output: 1.98 },
+    },
+    peak: {
+      cny: { cacheMissInput: 9.0, cacheHitInput: 0.30, output: 27.0 },
+      usd: { cacheMissInput: 1.32, cacheHitInput: 0.044, output: 3.96 },
+    },
+  },
 }
 
-/** 内置表的核验日期（来源：官方定价页 https://api-docs.deepseek.com/quick_start/pricing，2026-08-12 抓取）。 */
-export const BUILTIN_VERIFIED_AT = Date.parse('2026-08-12T00:00:00Z')
+/** 内置表的核验日期（来源：官方定价页中/英文版，2026-08-17 抓取）。 */
+export const BUILTIN_VERIFIED_AT = Date.parse('2026-08-17T00:00:00Z')
 
 /** 未收录模型回退：按 deepseek-v4-flash 刊例价估算并标记 ≈。 */
 export const FALLBACK_PRICING: ModelPricing = BUILTIN_PRICING['deepseek-v4-flash']
@@ -70,28 +96,101 @@ export function builtinPricingSource(table: Record<string, ModelPricing> = BUILT
 /** pricing.json 里单条用户覆盖的合法形状（verifiedAt 可选）。 */
 export type FilePricingEntry = ModelPricing & { verifiedAt?: number }
 
+function isFiniteNonNegative(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+}
+
+/**
+ * 校验一个单币种单价（{ cacheMissInput, cacheHitInput, output } 均须为非负有限数）。
+ */
+function normalizeBucketPrices(value: unknown): BucketPrices | null {
+  if (typeof value !== 'object' || value === null) return null
+  const record = value as Record<string, unknown>
+  if (
+    !isFiniteNonNegative(record.cacheMissInput)
+    || !isFiniteNonNegative(record.cacheHitInput)
+    || !isFiniteNonNegative(record.output)
+  ) return null
+  return {
+    cacheMissInput: record.cacheMissInput,
+    cacheHitInput: record.cacheHitInput,
+    output: record.output,
+  }
+}
+
+/** 人民币单价 → 按默认汇率折算美元单价（仅用于单币种覆盖的补全）。 */
+function deriveUsd(cny: BucketPrices): BucketPrices {
+  return {
+    cacheMissInput: cny.cacheMissInput / DEFAULT_CNY_PER_USD,
+    cacheHitInput: cny.cacheHitInput / DEFAULT_CNY_PER_USD,
+    output: cny.output / DEFAULT_CNY_PER_USD,
+  }
+}
+
+/**
+ * 校验并规范化一个时段单价（PriceTier）：
+ *  - 双币种：`{ cny: {…}, usd: {…} }`（usd 可缺省，缺省按默认汇率折算）；
+ *  - 单币种（兼容）：平铺 `{ cacheMissInput, cacheHitInput, output }`，视为人民币，
+ *    美元按默认汇率折算。
+ */
+function normalizePriceTier(value: unknown): PriceTier | null {
+  if (typeof value !== 'object' || value === null) return null
+  const record = value as Record<string, unknown>
+  if (record.cny !== undefined || record.usd !== undefined) {
+    const cny = normalizeBucketPrices(record.cny)
+    if (cny === null) return null
+    const usd = record.usd === undefined ? deriveUsd(cny) : normalizeBucketPrices(record.usd)
+    if (usd === null) return null
+    return { cny, usd }
+  }
+  const cny = normalizeBucketPrices(record)
+  if (cny === null) return null
+  return { cny, usd: deriveUsd(cny) }
+}
+
 /** pricing.json 支持两种形状：平铺 `{ model: {…} }` 或 `{ models: { model: {…} } }`。 */
 export type PricingFileShape =
   | Record<string, FilePricingEntry>
   | { models: Record<string, FilePricingEntry> }
 
-function isFiniteNonNegative(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0
-}
-
-/** 校验并规范化一个条目；非法返回 null。 */
+/**
+ * 校验并规范化一个条目；非法返回 null。
+ *
+ * 支持三种形状：
+ *  - 新格式（推荐）：`{ peak: { cny, usd }, offPeak: { cny, usd }, verifiedAt? }`，
+ *    双时段 × 双币种显式定价；
+ *  - 兼容①：`{ peak: {…}, offPeak: {…} }`（时段单价平铺桶价）→ 视为人民币，
+ *    美元按默认汇率折算；
+ *  - 兼容②：平铺 `{ cacheMissInput, cacheHitInput, output }` → 高峰/空闲同价、
+ *    单币种（人民币），美元按默认汇率折算。
+ */
 export function normalizeFileEntry(value: unknown): FilePricingEntry | null {
   if (typeof value !== 'object' || value === null) return null
   const record = value as Record<string, unknown>
-  const cacheMissInput = record.cacheMissInput
-  const cacheHitInput = record.cacheHitInput
-  const output = record.output
-  if (!isFiniteNonNegative(cacheMissInput) || !isFiniteNonNegative(cacheHitInput) || !isFiniteNonNegative(output)) {
-    return null
-  }
   const verifiedAt = record.verifiedAt
-  const entry: FilePricingEntry = { cacheMissInput, cacheHitInput, output }
+  if (!isFiniteNonNegative(verifiedAt) && verifiedAt !== undefined) return null
+
+  const entry: FilePricingEntry = {
+    offPeak: { cny: { cacheMissInput: 0, cacheHitInput: 0, output: 0 }, usd: { cacheMissInput: 0, cacheHitInput: 0, output: 0 } },
+    peak: { cny: { cacheMissInput: 0, cacheHitInput: 0, output: 0 }, usd: { cacheMissInput: 0, cacheHitInput: 0, output: 0 } },
+  }
   if (isFiniteNonNegative(verifiedAt)) entry.verifiedAt = verifiedAt
+
+  // 新格式 / 兼容①：{ peak, offPeak } 双时段显式定价。
+  if (record.peak !== undefined || record.offPeak !== undefined) {
+    const peak = normalizePriceTier(record.peak)
+    const offPeak = normalizePriceTier(record.offPeak)
+    if (peak === null || offPeak === null) return null
+    entry.peak = peak
+    entry.offPeak = offPeak
+    return entry
+  }
+
+  // 兼容②：平铺单价 → 高峰/空闲同价。
+  const flat = normalizePriceTier(record)
+  if (flat === null) return null
+  entry.peak = flat
+  entry.offPeak = flat
   return entry
 }
 
@@ -189,7 +288,7 @@ export function filePricingSource(
       const entry = matchEntry(entries, normalized)
       if (entry === null) return { pricing: null, verifiedAt: null }
       return {
-        pricing: { cacheMissInput: entry.cacheMissInput, cacheHitInput: entry.cacheHitInput, output: entry.output },
+        pricing: { peak: entry.peak, offPeak: entry.offPeak },
         verifiedAt: entry.verifiedAt ?? null,
       }
     },

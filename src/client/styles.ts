@@ -127,6 +127,35 @@ body[data-ds-dark-theme] .duc-popover { box-shadow: 0 16px 40px rgba(0, 0, 0, 0.
   font-size: 10.5px;
   white-space: nowrap;
 }
+.duc-head-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+/* v1.0.1：高峰/空闲时段 tag（红=高峰，绿=空闲） */
+.duc-tier-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 7px;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+  cursor: default;
+}
+.duc-tier-tag::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.duc-tier-peak { color: var(--duc-anomaly, #d8453c); }
+.duc-tier-offpeak { color: var(--duc-output, #43b96f); }
 .duc-section-value {
   color: var(--dsw-alias-label-primary, rgba(255, 255, 255, 0.92));
   font-size: 16px;

@@ -11,7 +11,7 @@
  * （接缝），默认用内置刊例价。测试喂合成事件流即可断言全部字段。
  */
 import type { CostSplit, TokenUsageBuckets } from '../pricing/calc.ts'
-import { costSplit, ZERO_BUCKETS } from '../pricing/calc.ts'
+import { costSplitAt, ZERO_BUCKETS } from '../pricing/calc.ts'
 import type { PricingResolver } from '../pricing/resolve.ts'
 import { createPricingResolver } from '../pricing/resolve.ts'
 
@@ -34,8 +34,12 @@ export interface SessionEventLike {
   }
 }
 
-/** 每轮成本分拆（USD）+ 来源/时效/未知标注。 */
-export interface RoundCost extends CostSplit {
+/** 每轮成本分拆（双币种：官方 CNY 与 USD 刊例价各一份）+ 来源/时效/未知标注。 */
+export interface RoundCost {
+  /** 人民币分拆（官方 CNY 价） */
+  cny: CostSplit
+  /** 美元分拆（官方 USD 价） */
+  usd: CostSplit
   /** 是否使用了回退估算价（模型未收录）。 */
   estimated: boolean
   /** 模型是否被显式定价；false = 未定价模型。 */
@@ -257,12 +261,13 @@ export function foldRounds(events: readonly SessionEventLike[], resolvePricing?:
         ? state.buckets.outputTokens / ((state.end - state.firstUsageAt) / 1_000)
         : null
     const resolved = resolver.resolve(model)
-    const split = costSplit(state.buckets, resolved.pricing)
+    // 按轮次开始时刻推断高峰/空闲时段计费；时刻缺失（无 turn/start）时按高峰保守估算。
+    // 双币种各算一份（官方 CNY / USD 刊例价），client 按显示币种选用。
+    const cny = costSplitAt(state.buckets, resolved.pricing, state.start ?? state.end, 'cny')
+    const usd = costSplitAt(state.buckets, resolved.pricing, state.start ?? state.end, 'usd')
     const cost: RoundCost = {
-      inputUsd: split.inputUsd,
-      cacheReadUsd: split.cacheReadUsd,
-      outputUsd: split.outputUsd,
-      totalUsd: split.totalUsd,
+      cny,
+      usd,
       estimated: resolved.estimated,
       unknownModel: !resolved.known,
       source: resolved.source,

@@ -11,7 +11,7 @@ export type AnomalyReason = 'output-growth' | 'context-bloat' | 'cache-hit-drop'
 
 export interface AnomalyFlag {
   turn: number
-  costUsd: number
+  costCny: number
   reasons: AnomalyReason[]
 }
 
@@ -43,7 +43,7 @@ function mean(values: readonly number[]): number | null {
  * 标记成本异常轮次。
  * @param rounds - 按轮次升序的完整轮次序列（host 历史）。
  * @param options - 窗口/阈值/归因灵敏度。
- * @returns 每项 { turn, costUsd, reasons }；reasons 为归因 chip（可空）。
+ * @returns 每项 { turn, costCny, reasons }；reasons 为归因 chip（可空）。
  */
 export function flagAnomalies(rounds: readonly ChartRound[], options?: AnomalyOptions): AnomalyFlag[] {
   const opts = { ...DEFAULTS, ...options }
@@ -58,7 +58,8 @@ export function flagAnomalies(rounds: readonly ChartRound[], options?: AnomalyOp
   for (const round of rounds) {
     if (round.cost === null) continue
 
-    const cost = round.cost.totalUsd
+    // 突增判定以官方人民币价分拆为基准（币种不影响相对突增判定）。
+    const cost = round.cost.cny.total
     const output = round.buckets.outputTokens
     const input = billedInputTokens(round.buckets)
     const hit = cacheHitPercent(round.buckets)
@@ -80,7 +81,7 @@ export function flagAnomalies(rounds: readonly ChartRound[], options?: AnomalyOp
       if (baselineHit !== null && hit !== null && hit < baselineHit - opts.reasonHitDropPp) {
         reasons.push('cache-hit-drop')
       }
-      flags.push({ turn: round.turn, costUsd: cost, reasons })
+      flags.push({ turn: round.turn, costCny: cost, reasons })
     }
 
     baselineCosts.push(cost)

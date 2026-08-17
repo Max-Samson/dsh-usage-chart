@@ -15,7 +15,7 @@
  * 零依赖 SVG；复用既有交互路径（hover / focus / 当前轮高亮）。
  */
 import { useId, useLayoutEffect, useRef, useState } from 'react'
-import { cacheHitPercent, formatDuration, formatTokens, formatUsd, type TokenUsageBuckets } from '../../pricing/calc.ts'
+import { cacheHitPercent, formatDuration, formatMoney, formatTokens, tierAt, type CostCurrency, type TokenUsageBuckets } from '../../pricing/calc.ts'
 import { SEGMENT_COLORS } from '../charts.tsx'
 import type { AnomalyFlag } from '../diagnose/anomaly.ts'
 import { getUiCopy, type UiLocale } from '../i18n.ts'
@@ -42,6 +42,8 @@ const SLOT = BAR_WIDTH + GAP
 const MIN_CHART_WIDTH = 480
 /** 值标签的最大字符数：过长（如 "$0.0013"、"123.4K"）时省略，避免与相邻柱重叠。 */
 const MAX_VALUE_LABEL_CHARS = 5
+/** 成本视角值标签的最大字符数：成本数值（如 "¥0.0013"）偏长，放宽以便逐轮可见。 */
+const COST_LABEL_MAX_CHARS = 9
 /** 工具提示相对可见区边缘的最小留白（px，解释卡宽 212px 的一半 + 边距）。 */
 const TOOLTIP_MARGIN = 116
 /** 耗时叠加：柱顶偏移的最大像素（随总耗时归一化）。 */
@@ -60,24 +62,25 @@ function tokenSegments(copy: ReturnType<typeof getUiCopy>, b: TokenUsageBuckets)
   ]
 }
 
-function costSegments(copy: ReturnType<typeof getUiCopy>, round: ChartRound): Segment[] {
+function costSegments(copy: ReturnType<typeof getUiCopy>, round: ChartRound, currency: CostCurrency): Segment[] {
   const cost = round.cost
   if (cost === null) return []
+  const split = cost[currency]
   return [
-    { label: copy.inputCost, value: cost.inputUsd, color: SEGMENT_COLORS.miss },
-    { label: copy.segments.hit, value: cost.cacheReadUsd, color: SEGMENT_COLORS.hit },
-    { label: copy.outputCost, value: cost.outputUsd, color: SEGMENT_COLORS.output },
+    { label: copy.inputCost, value: split.input, color: SEGMENT_COLORS.miss },
+    { label: copy.segments.hit, value: split.cacheRead, color: SEGMENT_COLORS.hit },
+    { label: copy.outputCost, value: split.output, color: SEGMENT_COLORS.output },
   ]
 }
 
 /** 该轮在本视角下的「总量」（决定柱高/值标签）。 */
-function roundTotal(round: ChartRound, mode: RoundChartMode): number {
-  if (mode === 'cost') return round.cost?.totalUsd ?? 0
+function roundTotal(round: ChartRound, mode: RoundChartMode, currency: CostCurrency): number {
+  if (mode === 'cost') return round.cost?.[currency].total ?? 0
   return tokenTotal(round.buckets)
 }
 
-function formatTotal(value: number, mode: RoundChartMode): string {
-  return mode === 'cost' ? formatUsd(value) : formatTokens(value)
+function formatTotal(value: number, mode: RoundChartMode, currency: CostCurrency): string {
+  return mode === 'cost' ? formatMoney(value, currency) : formatTokens(value)
 }
 
 function clamp(value: number, lo: number, hi: number): number {
@@ -89,11 +92,14 @@ export function RoundBars({
   mode = 'absolute',
   flags = [],
   locale,
+  currency,
 }: {
   rounds: readonly ChartRound[]
   mode?: RoundChartMode
   flags?: readonly AnomalyFlag[]
   locale: UiLocale
+  /** 成本视角的显示币种（官方 CNY / USD 刊例价）。 */
+  currency: CostCurrency
 }): JSX.Element | null {
   const tooltipId = useId()
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
@@ -132,7 +138,7 @@ export function RoundBars({
   const baseline = PAD_TOP + BAR_HEIGHT
   const svgHeight = baseline + LABEL_HEIGHT + TICK_HEIGHT
 
-  const maxValue = Math.max(1, ...rounds.map((r) => roundTotal(r, mode)))
+  const maxValue = Math.max(1, ...rounds.map((r) => roundTotal(r, mode, currency)))
   let maxDuration = 0
   for (const r of rounds) if (r.durationMs !== null && r.durationMs > maxDuration) maxDuration = r.durationMs
   const hasDuration = maxDuration > 0
@@ -140,7 +146,7 @@ export function RoundBars({
   const flagByTurn = new Map<number, AnomalyFlag>()
   for (const flag of flags) flagByTurn.set(flag.turn, flag)
 
-  const segmentsOf = (r: ChartRound): Segment[] => (mode === 'cost' ? costSegments(copy, r) : tokenSegments(copy, r.buckets))
+  const segmentsOf = (r: ChartRound): Segment[] => (mode === 'cost' ? costSegments(copy, r, currency) : tokenSegments(copy, r.buckets))
 
   const onScroll = (): void => {
     const el = scrollRef.current
@@ -188,7 +194,7 @@ export function RoundBars({
           <line className="duc-chart-baseline" x1={PAD_X} x2={svgWidth - PAD_X} y1={baseline} y2={baseline} />
           {rounds.map((round, i) => {
             const x = startX + i * SLOT
-            const rawTotal = roundTotal(round, mode)
+            const rawTotal = roundTotal(round, mode, currency)
             const total = Math.max(1, rawTotal)
             const totalHeight = mode === 'ratio' && rawTotal > 0 ? BAR_HEIGHT : (total / maxValue) * BAR_HEIGHT
             let y = baseline
@@ -207,10 +213,14 @@ export function RoundBars({
             const isCurrent = i === n - 1
             const flag = flagByTurn.get(round.turn)
             const hit = cacheHitPercent(round.buckets)
-            const totalText = formatTotal(rawTotal, mode)
-            // 值标签策略：当前轮始终显示；可滚动（密集）时其余轮省略，
-            // 不可滚动时仅省略过长的文本（避免相邻标签重叠），数值随时在 Tooltip 里。
-            const showValue = isCurrent || (!scrollable && totalText.length <= MAX_VALUE_LABEL_CHARS)
+            const totalText = formatTotal(rawTotal, mode, currency)
+            // 值标签策略：当前轮始终显示；成本视角每一轮都显示（仅省略过长文本，
+            // 费用数据逐轮可见）；其余视角在可滚动（密集）时省略非当前轮，
+            // 数值随时在 Tooltip 里。
+            const showValue = isCurrent
+              || (mode === 'cost'
+                ? totalText.length <= COST_LABEL_MAX_CHARS
+                : !scrollable && totalText.length <= MAX_VALUE_LABEL_CHARS)
             const title = copy.roundTotalLabel(round.turn, isCurrent, totalText)
             return (
               <g
@@ -268,7 +278,7 @@ export function RoundBars({
                 points={rounds
                   .map((round, i) => {
                     const x = startX + i * SLOT + BAR_WIDTH / 2
-                    const rawTotal = roundTotal(round, mode)
+                    const rawTotal = roundTotal(round, mode, currency)
                     const totalHeight = mode === 'ratio' && rawTotal > 0 ? BAR_HEIGHT : (Math.max(1, rawTotal) / maxValue) * BAR_HEIGHT
                     const offset = round.durationMs !== null ? Math.min(DURATION_BAND, (round.durationMs / maxDuration) * DURATION_BAND) : 0
                     return `${x},${baseline - totalHeight - offset - 3}`
@@ -277,7 +287,7 @@ export function RoundBars({
               />
               {rounds.map((round, i) => {
                 const x = startX + i * SLOT + BAR_WIDTH / 2
-                const rawTotal = roundTotal(round, mode)
+                const rawTotal = roundTotal(round, mode, currency)
                 const totalHeight = mode === 'ratio' && rawTotal > 0 ? BAR_HEIGHT : (Math.max(1, rawTotal) / maxValue) * BAR_HEIGHT
                 const offset = round.durationMs !== null ? Math.min(DURATION_BAND, (round.durationMs / maxDuration) * DURATION_BAND) : 0
                 return (
@@ -325,25 +335,26 @@ export function RoundBars({
         >
           <div className="duc-chart-tooltip-head">
             <strong>{copy.roundTitle(activeRound.turn, activeIsCurrent)}</strong>
-            <b>{formatTotal(roundTotal(activeRound, mode), mode)}</b>
+            <b>{formatTotal(roundTotal(activeRound, mode, currency), mode, currency)}</b>
           </div>
           <div className="duc-chart-tooltip-grid">
             {activeParts.map((part) => (
               <span key={part.label}>
                 <i style={{ background: part.color }} />
                 <em>{part.label}</em>
-                <b>{mode === 'cost' ? formatUsd(part.value) : formatTokens(part.value)}</b>
-                <small>{activeParts.length > 0 && roundTotal(activeRound, mode) > 0
-                  ? `${Math.round((part.value / roundTotal(activeRound, mode)) * 100)}%`
+                <b>{mode === 'cost' ? formatMoney(part.value, currency) : formatTokens(part.value)}</b>
+                <small>{activeParts.length > 0 && roundTotal(activeRound, mode, currency) > 0
+                  ? `${Math.round((part.value / roundTotal(activeRound, mode, currency)) * 100)}%`
                   : '0%'}</small>
               </span>
             ))}
           </div>
           <div className="duc-chart-tooltip-meta">
             {mode !== 'cost' && activeRound.cost !== null && (
-              <span>{copy.costLabel}<b>{formatUsd(activeRound.cost.totalUsd)}{activeRound.cost.estimated ? ` ${copy.estimatedMark}` : ''}</b></span>
+              <span>{copy.costLabel}<b>{formatMoney(activeRound.cost[currency].total, currency)}{activeRound.cost.estimated ? ` ${copy.estimatedMark}` : ''}</b></span>
             )}
             {activeRound.model !== null && <span>{copy.modelLabel}<b>{activeRound.model.replace(/^deepseek-/, '')}</b></span>}
+            <span>{copy.tierLabel}<b>{copy.tiers[tierAt(activeRound.startedAt ?? undefined)]}</b></span>
             <span>{copy.duration}<b>{formatDuration(activeRound.durationMs)}</b></span>
             <span>{copy.ttft}<b>{formatDuration(activeRound.ttftMs)}</b></span>
             {activeRound.outputTps !== null && <span>{copy.outputTps}<b>{Math.round(activeRound.outputTps)} t/s</b></span>}

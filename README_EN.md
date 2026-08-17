@@ -17,7 +17,7 @@ Both variants follow the DSH theme and in-app language setting.
 > Both screenshots use fictional demo data only. They contain no real session content,
 > token counts, costs, balances, or API keys.
 
-The plugin adds a compact indicator below the conversation composer. It shows input/output tokens, cache-hit ratio, estimated cost, active model, a slim context-pressure bar, and DeepSeek account balance. Click it to open a zero-dependency SVG dashboard with per-turn usage history — including a cost view, a duration overlay, anomaly markers, an explainer tooltip (tokens + cost + model + duration/TTFT/TPS + end reason), horizontally scrollable per-round bars (all rounds, fixed slim bar width, auto-scroll to latest), a dismissible `≈ $0.00xx` badge on each assistant message, and multi-currency costs with a live USD→CNY rate refresh (v0.3).
+The plugin adds a compact indicator below the conversation composer. It shows input/output tokens, cache-hit ratio, estimated cost, active model, a slim context-pressure bar, and DeepSeek account balance. Click it to open a zero-dependency SVG dashboard with per-turn usage history — including a cost view (every bar shows its own cost value, not just the current round), a duration overlay, anomaly markers, an explainer tooltip (tokens + cost + model + billing tier + duration/TTFT/TPS + end reason), horizontally scrollable per-round bars (all rounds, fixed slim bar width, auto-scroll to latest), a dismissible `≈ ¥/$0.00xx` badge on each assistant message, peak/off-peak tiered billing with a live red/green billing-tier tag in the panel (red = peak, green = off-peak, v1.0.1), and official dual-currency pricing (CNY from the Chinese pricing page, USD from the English pricing page — no FX conversion, v1.0.1).
 
 The interface supports Chinese and English and follows the DSH in-app language setting. Browser language seeds the initial display only when the Host has not exposed a setting yet. Language changes are applied without reloading the plugin.
 
@@ -120,7 +120,7 @@ export DEEPSEEK_API_KEY=sk-...
 dsh web --profile web
 ```
 
-### Price overrides (optional, v0.2+)
+### Price overrides (optional, v0.2+ / v1.0.1 dual-currency, tiered)
 
 Costs are resolved with priority **user override file > builtin list price > fallback
 estimate** (prices are resolved only on the Host; the client consumes the
@@ -131,21 +131,37 @@ picked up live:
 
 ```json
 {
-  "deepseek-v4-flash": { "cacheMissInput": 0.14, "cacheHitInput": 0.0028, "output": 0.28, "verifiedAt": 1755100800000 }
+  "deepseek-v4-flash": {
+    "offPeak": {
+      "cny": { "cacheMissInput": 1.5, "cacheHitInput": 0.05, "output": 4.5 },
+      "usd": { "cacheMissInput": 0.22, "cacheHitInput": 0.007, "output": 0.66 }
+    },
+    "peak": {
+      "cny": { "cacheMissInput": 3.0, "cacheHitInput": 0.10, "output": 9.0 },
+      "usd": { "cacheMissInput": 0.44, "cacheHitInput": 0.014, "output": 1.32 }
+    },
+    "verifiedAt": 1755100800000
+  }
 }
 ```
 
-`verifiedAt` (epoch ms) is optional and shown as the verification date in the panel.
-Models not covered anywhere are explicitly marked "Unpriced model" in the UI — never
-silently billed as zero. To point at another file, set `config.pricingFile` in
-`cordis.patch.yml`.
+Unit prices are **dual-currency (CNY + USD) per 1M tokens**: `peak` covers the official
+peak hours (Beijing time 09:00–12:00 and 14:00–18:00, i.e. UTC 01:00–04:00 and
+06:00–10:00, charged at 2×), `offPeak` covers the rest. The legacy flat shape
+`{ "cacheMissInput": …, "cacheHitInput": …, "output": … }` is still accepted and treated
+as tier-independent, quoted in CNY (USD derived at the default rate 6.76). `verifiedAt`
+(epoch ms) is optional and shown as the verification date in the panel. Models not
+covered anywhere are explicitly marked "Unpriced model" in the UI — never silently billed
+as zero. To point at another file, set `config.pricingFile` in `cordis.patch.yml`.
 
-### Display currency and live FX rate (v0.3+)
+### Display currency and live FX rate (v0.3+ / v1.0.1 official dual-currency)
 
-Costs are shown in **USD** by default; the cost section has a one-click **CNY** toggle
-(remembered in the browser). CNY display uses `config.cnyPerUsd` (default 6.76) and a
-"Refresh rate" button that fetches the latest USD→CNY rate through the Host
-`/dsh-usage-chart/rate` proxy and re-estimates immediately:
+Costs are computed with the **official list price of the selected currency** (CNY quote
+from the Chinese pricing page, USD quote from the English pricing page — **no FX
+conversion**, consistent with the official bill). The cost section has a one-click
+**CNY/USD** toggle (remembered in the browser); the indicator, panel, chart and badge all
+follow it. `config.cnyPerUsd` (default 6.76) and the "Refresh rate" button (via the Host
+`/dsh-usage-chart/rate` proxy) are used only for the informational "1 USD ≈ X CNY" note:
 
 - **Multi-source fallback**: when the custom source (`config.fxUrl`) is unreachable, a
   built-in fallback source (frankfurter.dev) is tried;
@@ -205,7 +221,7 @@ for the maintainer to publish.
 |---|---|---|
 | Token usage | DSH `tokenUsage` / `contextPressure` projections | Session-scoped, updated by the adapter |
 | Per-round history | DSH Host session event log (`/usage` fold) | Duration / TTFT / TPS / model / end reason / per-round cost; falls back to page-observed deltas when unavailable |
-| Cost | Published DeepSeek price (builtin + optional `pricing.json` override) × reported usage | Estimate, not an invoice; resolved once on the Host, consumed via the `/pricing` snapshot |
+| Cost | Published DeepSeek price (builtin + optional `pricing.json` override; dual-currency CNY/USD per 1M tokens, peak/off-peak tiers) × reported usage | Estimate, not an invoice; resolved once on the Host, consumed via the `/pricing` snapshot |
 | Display currency / FX rate | Host `/meta` config + `/rate` live-rate proxy | Live rate with multi-source fallback and last-rate persistence |
 | Balance | DeepSeek `GET /user/balance` | Proxied by the Host with `no-store` responses |
 

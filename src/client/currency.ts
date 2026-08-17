@@ -7,10 +7,10 @@
  * useDisplayCurrency()（useSyncExternalStore）读取。
  */
 import { useSyncExternalStore } from 'react'
-import { DEFAULT_CNY_PER_USD, type DisplayCurrency } from '../pricing/calc.ts'
+import { DEFAULT_CNY_PER_USD, type CostCurrency } from '../pricing/calc.ts'
 
 export interface DisplayMeta {
-  currency: DisplayCurrency
+  currency: CostCurrency
   cnyPerUsd: number
   rateSource?: 'config' | 'live'
   rateFetchedAt?: number
@@ -31,7 +31,7 @@ function notify(): void {
   for (const listener of [...listeners]) listener()
 }
 
-function storedCurrency(): DisplayCurrency | null {
+function storedCurrency(): CostCurrency | null {
   try {
     const value = typeof localStorage === 'undefined' ? null : localStorage.getItem(STORAGE_KEY)
     return value === 'cny' || value === 'usd' ? value : null
@@ -55,7 +55,7 @@ export function useDisplayCurrency(): DisplayMeta {
   return useSyncExternalStore(subscribeDisplayMeta, getDisplayMeta)
 }
 
-export function setDisplayCurrency(currency: DisplayCurrency): void {
+export function setDisplayCurrency(currency: CostCurrency): void {
   userChosen = true
   if (meta.currency === currency) return
   meta = { ...meta, currency }
@@ -73,7 +73,7 @@ export async function fetchDisplayMeta(): Promise<void> {
     if (!res.ok) return
     const body = (await res.json()) as { ok?: boolean; currency?: string; cnyPerUsd?: number }
     if (body.ok !== true) return
-    const currency: DisplayCurrency = body.currency === 'cny' ? 'cny' : 'usd'
+    const currency: CostCurrency = body.currency === 'cny' ? 'cny' : 'usd'
     const cnyPerUsd =
       typeof body.cnyPerUsd === 'number' && Number.isFinite(body.cnyPerUsd) && body.cnyPerUsd > 0
         ? body.cnyPerUsd

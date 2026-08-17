@@ -6,8 +6,8 @@
  * 不内置任何价格常量——快照不可用时成本显示优雅降级（不猜测）。
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { CostSplit, ModelPricing, TokenUsageBuckets } from '../pricing/calc.ts'
-import { costSplit } from '../pricing/calc.ts'
+import type { CostCurrency, CostSplit, ModelPricing, TokenUsageBuckets } from '../pricing/calc.ts'
+import { costSplitAt } from '../pricing/calc.ts'
 
 export interface PricingEntry {
   pricing: ModelPricing
@@ -98,11 +98,21 @@ export interface ResolvedClientCost {
   verifiedAt: number | null
 }
 
-/** 一次用量的成本解析（快照 + 模型 → 分拆 + 未知标注）。 */
-export function resolveCost(table: PricingTable, usage: TokenUsageBuckets, model: string | null | undefined): ResolvedClientCost {
+/**
+ * 一次用量的成本解析（快照 + 模型 → 分拆 + 未知标注）。
+ * `at` 为发生时刻（epoch 毫秒），用于按高峰/空闲时段计费；缺省用当前时刻。
+ * `currency` 指定币种：金额以该币种的官方刊例价计算（'cny' | 'usd'）。
+ */
+export function resolveCost(
+  table: PricingTable,
+  usage: TokenUsageBuckets,
+  model: string | null | undefined,
+  at: number | null | undefined,
+  currency: CostCurrency,
+): ResolvedClientCost {
   const resolved = resolvePricing(table, model)
   return {
-    split: costSplit(usage, resolved.pricing),
+    split: costSplitAt(usage, resolved.pricing, at, currency),
     estimated: !resolved.known,
     unknownModel: !resolved.known,
     source: resolved.source,

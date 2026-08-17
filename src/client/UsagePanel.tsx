@@ -6,9 +6,9 @@
  * 每轮柱状图优先取宿主从会话日志折叠的完整历史（/dsh-usage-chart/usage），
  * 请求失败时回退到「本页观测」增量（如实标注）。
  */
-import { useMemo, useState } from 'react'
-import type { TokenUsageBuckets } from '../pricing/calc.ts'
-import { billedInputTokens, cacheHitPercent, costSplit, formatMoney, formatPricePerM, formatTokens } from '../pricing/calc.ts'
+import { useEffect, useMemo, useState } from 'react'
+import type { PriceTierId, TokenUsageBuckets } from '../pricing/calc.ts'
+import { billedInputTokens, cacheHitPercent, costSplitAt, formatMoney, formatPricePerM, formatTokens, tierAt } from '../pricing/calc.ts'
 import { currencySymbol, type BalanceData, type BalanceStatus } from './balance.ts'
 import { refreshLiveRate, setDisplayCurrency, useDisplayCurrency } from './currency.ts'
 import { RoundBars, type RoundChartMode } from './chart/RoundBars.tsx'
@@ -45,6 +45,19 @@ function occupancyPercent(pressure: ContextPressureView | undefined): number | n
   return Math.min(100, Math.round((used / pressure.contextWindow) * 100))
 }
 
+/**
+ * 当前计费时段（v1.0.1）：按北京时间实时判定高峰/空闲，跨整点自动翻转。
+ * 高峰时段（北京时间 09:00–12:00、14:00–18:00）价格为空闲时段的 2 倍。
+ */
+function useCurrentTier(): PriceTierId {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60_000)
+    return () => clearInterval(timer)
+  }, [])
+  return tierAt(now)
+}
+
 export function UsagePanel(props: UsagePanelProps): JSX.Element {
   const [chartMode, setChartMode] = useState<RoundChartMode>('absolute')
   const [rateStatus, setRateStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
@@ -55,6 +68,7 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
   const copy = getUiCopy(locale)
   const { currency, cnyPerUsd, rateFetchedAt } = useDisplayCurrency()
   const currencySuffix = currency === 'cny' ? `CNY（1 USD ≈ ${cnyPerUsd} CNY）` : 'USD'
+  const currentTier = useCurrentTier()
 
   const onRefreshRate = async (): Promise<void> => {
     setRateStatus('loading')
@@ -81,7 +95,13 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
     if (pricing.table === null) return null
     return resolvePricing(pricing.table, effectiveModel)
   }, [pricing.table, effectiveModel])
-  const costSplitTotal = useMemo(() => costView === null ? null : costSplit(totals, costView.pricing), [costView, totals])
+  // 面板汇总成本：按所选币种的官方刊例价、按高峰/空闲时段计费。时段取
+  // 「最近一轮历史的开始时刻」（更贴近实际发生时段；无历史时用当前时刻）。
+  const costSplitTotal = useMemo(() => {
+    if (costView === null) return null
+    const last = historyRounds !== null && historyRounds.length > 0 ? historyRounds[historyRounds.length - 1] : null
+    return costSplitAt(totals, costView.pricing, last?.startedAt ?? Date.now(), currency)
+  }, [costView, totals, historyRounds, currency])
   const occupancy = occupancyPercent(pressure)
   const cacheHit = cacheHitPercent(totals)
   const hasTokens = billedInputTokens(totals) > 0 || totals.outputTokens > 0
@@ -108,7 +128,13 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
       <section className="duc-section">
         <div className="duc-section-head">
           <h4>{copy.sessionUsage}</h4>
-          {effectiveModel !== undefined && <span className="duc-section-meta">{effectiveModel.replace(/^deepseek-/, '')}</span>}
+          <span className="duc-head-right">
+            <span
+              className={`duc-tier-tag duc-tier-${currentTier.toLowerCase()}`}
+              title={`${copy.tiers[currentTier]}：${copy.tierWindow[currentTier]}`}
+            >{copy.tiers[currentTier]}</span>
+            {effectiveModel !== undefined && <span className="duc-section-meta">{effectiveModel.replace(/^deepseek-/, '')}</span>}
+          </span>
         </div>
         {hasTokens ? (
           <>
@@ -159,27 +185,27 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
               onClick={() => void onRefreshRate()}
             >{rateStatus === 'loading' ? copy.refreshingRate : copy.refreshRate}</button>
             <strong className="duc-section-value">
-              {costSplitTotal !== null ? `≈ ${formatMoney(costSplitTotal.totalUsd, currency, cnyPerUsd)}` : copy.unavailable}
+              {costSplitTotal !== null ? `≈ ${formatMoney(costSplitTotal.total, currency)}` : copy.unavailable}
             </strong>
           </div>
         </div>
         {costSplitTotal !== null && costView !== null ? (
           <>
             <div className="duc-cost-split">
-              <span><i style={{ background: SEGMENT_COLORS.miss }} />{copy.inputCost} <b>{formatMoney(costSplitTotal.inputUsd, currency, cnyPerUsd)}</b></span>
-              <span><i style={{ background: SEGMENT_COLORS.output }} />{copy.outputCost} <b>{formatMoney(costSplitTotal.outputUsd, currency, cnyPerUsd)}</b></span>
+              <span><i style={{ background: SEGMENT_COLORS.miss }} />{copy.inputCost} <b>{formatMoney(costSplitTotal.input, currency)}</b></span>
+              <span><i style={{ background: SEGMENT_COLORS.output }} />{copy.outputCost} <b>{formatMoney(costSplitTotal.output, currency)}</b></span>
             </div>
             <HStack
               segments={[
-                { label: copy.inputCost, value: costSplitTotal.inputUsd, color: SEGMENT_COLORS.miss },
-                { label: copy.outputCost, value: costSplitTotal.outputUsd, color: SEGMENT_COLORS.output },
+                { label: copy.inputCost, value: costSplitTotal.input, color: SEGMENT_COLORS.miss },
+                { label: copy.outputCost, value: costSplitTotal.output, color: SEGMENT_COLORS.output },
               ]}
             />
             <div className="duc-note">
               {copy.pricingNote(
-                formatPricePerM(costView.pricing.cacheMissInput, currency, cnyPerUsd),
-                formatPricePerM(costView.pricing.cacheHitInput, currency, cnyPerUsd),
-                formatPricePerM(costView.pricing.output, currency, cnyPerUsd),
+                `${formatPricePerM(costView.pricing.offPeak[currency].cacheMissInput, currency)}/${formatPricePerM(costView.pricing.peak[currency].cacheMissInput, currency)}`,
+                `${formatPricePerM(costView.pricing.offPeak[currency].cacheHitInput, currency)}/${formatPricePerM(costView.pricing.peak[currency].cacheHitInput, currency)}`,
+                `${formatPricePerM(costView.pricing.offPeak[currency].output, currency)}/${formatPricePerM(costView.pricing.peak[currency].output, currency)}`,
                 currencySuffix,
                 sourceText,
                 verifiedText,
@@ -232,7 +258,7 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
           <span>{copy.roundExplainer}</span>
           <b>{chartMode === 'absolute' ? copy.totalExplainer : chartMode === 'ratio' ? copy.compositionExplainer : copy.costExplainer}</b>
         </div>
-        <RoundBars rounds={chartRounds} mode={chartMode} flags={flags} locale={locale} />
+        <RoundBars rounds={chartRounds} mode={chartMode} flags={flags} locale={locale} currency={currency} />
         {chartRounds.length === 0
           ? <div className="duc-empty">{copy.roundEmpty}</div>
           : <><Legend items={tokenLegend(copy)} /><div className="duc-note">{chartSourceNote}</div></>}

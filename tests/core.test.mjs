@@ -14,7 +14,6 @@ import {
   normalizeBaseUrl,
   normalizeCnyPerUsd,
   normalizeCurrency,
-  toDisplayAmount,
 } from '../lib/index.js'
 
 function responseRecorder() {
@@ -72,10 +71,20 @@ test('foldTurnUsage ignores malformed or negative usage samples', () => {
   })
 })
 
-test('pricing matches the documented DeepSeek V4 prices', () => {
-  assert.deepEqual(PRICING['deepseek-v4-flash'], { cacheMissInput: 0.14, cacheHitInput: 0.0028, output: 0.28 })
+test('pricing matches the documented DeepSeek V4 prices (CNY + USD, peak/off-peak)', () => {
+  assert.deepEqual(PRICING['deepseek-v4-flash'], {
+    offPeak: {
+      cny: { cacheMissInput: 1.5, cacheHitInput: 0.05, output: 4.5 },
+      usd: { cacheMissInput: 0.22, cacheHitInput: 0.007, output: 0.66 },
+    },
+    peak: {
+      cny: { cacheMissInput: 3.0, cacheHitInput: 0.10, output: 9.0 },
+      usd: { cacheMissInput: 0.44, cacheHitInput: 0.014, output: 1.32 },
+    },
+  })
   assert.equal(cacheHitPercent({ uncachedInputTokens: 50, outputTokens: 0, cacheReadTokens: 50, cacheWriteTokens: 0 }), 50)
-  assert.equal(estimateCost({ uncachedInputTokens: 1_000_000, outputTokens: 1_000_000, cacheReadTokens: 0, cacheWriteTokens: 0 }, 'deepseek-v4-pro').usd, 1.305)
+  // 时刻未知 → 高峰价保守估算：1M 未命中输入 + 1M 输出（v4-pro 高峰 CNY = 9 + 27）
+  assert.equal(estimateCost({ uncachedInputTokens: 1_000_000, outputTokens: 1_000_000, cacheReadTokens: 0, cacheWriteTokens: 0 }, 'deepseek-v4-pro').cny, 36)
 })
 
 test('normalizeBaseUrl accepts HTTPS and loopback HTTP only', () => {
@@ -173,7 +182,7 @@ test('balance route falls back to $DEEPSEEK_API_KEY when no credentials/config k
   })
 })
 
-test('display-currency helpers convert and format USD amounts', () => {
+test('display-currency helpers format amounts in the selected currency', () => {
   assert.equal(normalizeCurrency(undefined), 'usd')
   assert.equal(normalizeCurrency('usd'), 'usd')
   assert.equal(normalizeCurrency('cny'), 'cny')
@@ -183,19 +192,19 @@ test('display-currency helpers convert and format USD amounts', () => {
   assert.equal(normalizeCnyPerUsd(-1), DEFAULT_CNY_PER_USD)
   assert.equal(normalizeCnyPerUsd('x'), DEFAULT_CNY_PER_USD)
 
-  assert.equal(toDisplayAmount(0.058, 'usd', 6.76), 0.058)
-  assert.ok(Math.abs(toDisplayAmount(0.058, 'cny', 6.76) - 0.058 * 6.76) < 1e-12)
+  // 金额已按显示币种计算（官方 CNY / USD 刊例价），格式化不再换算。
+  assert.equal(formatMoney(0, 'usd'), '$0')
+  assert.equal(formatMoney(0.058, 'usd'), '$0.058')
+  assert.equal(formatMoney(0.392, 'cny'), '¥0.392')
+  assert.equal(formatMoney(1.5, 'cny'), '¥1.500')
+  assert.equal(formatMoney(123, 'usd'), '$123.00')
+  assert.equal(formatMoney(0.0013, 'usd'), '$0.0013')
 
-  assert.equal(formatMoney(0, 'usd', 6.76), '$0')
-  assert.equal(formatMoney(0.058, 'usd', 6.76), '$0.058')
-  assert.equal(formatMoney(0.058, 'cny', 6.76), '¥0.392')
-  assert.equal(formatMoney(1, 'cny', 6.76), '¥6.760')
-  assert.equal(formatMoney(123, 'usd', 6.76), '$123.00')
-
-  assert.equal(formatPricePerM(0.14, 'usd', 6.76), '0.14')
-  assert.equal(formatPricePerM(0.14, 'cny', 6.76), '0.946')
-  assert.equal(formatPricePerM(0.0028, 'cny', 6.76), '0.0189')
-  assert.equal(formatPricePerM(0.28, 'cny', 6.76), '1.893')
+  assert.equal(formatPricePerM(1.5, 'cny'), '1.5')
+  assert.equal(formatPricePerM(0.22, 'usd'), '0.22')
+  assert.equal(formatPricePerM(0.007, 'usd'), '0.007')
+  assert.equal(formatPricePerM(1.32, 'usd'), '1.32')
+  assert.equal(formatPricePerM(0.044, 'usd'), '0.044')
 })
 
 test('mounted /dsh-usage-chart/meta route serves display-currency defaults and honors config', async () => {

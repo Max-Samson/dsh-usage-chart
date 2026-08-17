@@ -5,7 +5,7 @@
  * 未知模型不静默按 0 计——`unknown: true` 显式标记，UI 显示「未定价模型」。
  */
 import type { CostSplit, ModelPricing, TokenUsageBuckets } from './calc.ts'
-import { costSplit } from './calc.ts'
+import { costSplitAt } from './calc.ts'
 import { builtinPricingSource, FALLBACK_PRICING, type PricingSource } from './source.ts'
 
 /** 解析结果：定价 + 来源 + 时效 + 是否显式收录。 */
@@ -100,9 +100,9 @@ export function pricingFor(model: string | undefined): { pricing: ModelPricing; 
   return { pricing: resolved.pricing, estimated: false }
 }
 
-/** 按内置刊例价估算一次用量成本（USD）（v0.1 兼容）。 */
-export function estimateCost(usage: TokenUsageBuckets, model: string | undefined): { usd: number; estimated: boolean } {
+/** 按内置刊例价估算一次用量成本（CNY；时刻未知按高峰价保守估算）（v0.1 兼容）。 */
+export function estimateCost(usage: TokenUsageBuckets, model: string | undefined): { cny: number; estimated: boolean } {
   const { pricing, estimated } = pricingFor(model)
-  const split: CostSplit = costSplit(usage, pricing)
-  return { usd: split.totalUsd, estimated }
+  const split: CostSplit = costSplitAt(usage, pricing, null, 'cny')
+  return { cny: split.total, estimated }
 }

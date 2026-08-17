@@ -9,33 +9,131 @@ import {
   PRICING,
   apply,
   builtinPricingSource,
+  costSplitAt,
   createPricingResolver,
   estimateCost,
   filePricingSource,
   parsePricingFile,
   pricingFor,
+  tierAt,
 } from '../lib/index.js'
+
+/** 2026-08-17 内置刊例价（双币种 /1M，高峰/空闲）。 */
+const FLASH_OFF_PEAK = {
+  cny: { cacheMissInput: 1.5, cacheHitInput: 0.05, output: 4.5 },
+  usd: { cacheMissInput: 0.22, cacheHitInput: 0.007, output: 0.66 },
+}
+const FLASH_PEAK = {
+  cny: { cacheMissInput: 3.0, cacheHitInput: 0.10, output: 9.0 },
+  usd: { cacheMissInput: 0.44, cacheHitInput: 0.014, output: 1.32 },
+}
+const PRO_OFF_PEAK = {
+  cny: { cacheMissInput: 4.5, cacheHitInput: 0.15, output: 13.5 },
+  usd: { cacheMissInput: 0.66, cacheHitInput: 0.022, output: 1.98 },
+}
+const PRO_PEAK = {
+  cny: { cacheMissInput: 9.0, cacheHitInput: 0.30, output: 27.0 },
+  usd: { cacheMissInput: 1.32, cacheHitInput: 0.044, output: 3.96 },
+}
 
 test('builtin source resolves exact and prefixed models, misses unknown', () => {
   const source = builtinPricingSource()
-  assert.equal(source.resolve('deepseek-v4-pro').pricing.cacheMissInput, 0.435)
-  assert.equal(source.resolve('deepseek-v4-flash-2026-08-01').pricing.output, 0.28)
+  assert.deepEqual(source.resolve('deepseek-v4-pro').pricing.offPeak, PRO_OFF_PEAK)
+  assert.deepEqual(source.resolve('deepseek-v4-pro').pricing.peak, PRO_PEAK)
+  // 前缀匹配（带日期后缀的模型版本）
+  assert.equal(source.resolve('deepseek-v4-flash-2026-08-01').pricing.offPeak.cny.output, 4.5)
+  assert.equal(source.resolve('deepseek-v4-flash-2026-08-01').pricing.offPeak.usd.output, 0.66)
+  assert.equal(source.resolve('deepseek-v4-flash-2026-08-01').pricing.peak.usd.output, 1.32)
   assert.equal(source.resolve('unknown-model').pricing, null)
-  assert.equal(source.resolve('DEEPSEEK-V4-PRO').pricing.cacheMissInput, 0.435, '大小写不敏感')
+  assert.equal(source.resolve('DEEPSEEK-V4-PRO').pricing.offPeak.cny.cacheMissInput, 4.5, '大小写不敏感')
 })
 
-test('parsePricingFile validates entries and accepts both shapes', () => {
+test('tierAt maps timestamps to peak/off-peak by Beijing time', () => {
+  // 基准：1970-01-01T00:00:00Z = 北京时间 08:00（空闲）。
+  const base = Date.UTC(1970, 0, 1, 0, 0, 0)
+  const atBeijingHour = (hour) => base + (hour - 8) * 3_600_000
+  // 高峰：09:00–12:00、14:00–18:00（北京时间 = UTC 01:00–04:00、06:00–10:00）
+  assert.equal(tierAt(atBeijingHour(9)), 'peak')
+  assert.equal(tierAt(atBeijingHour(10)), 'peak')
+  assert.equal(tierAt(atBeijingHour(11)), 'peak')
+  assert.equal(tierAt(atBeijingHour(14)), 'peak')
+  assert.equal(tierAt(atBeijingHour(17)), 'peak')
+  // 空闲：其余时段（含边界 12:00、13:00、18:00）
+  assert.equal(tierAt(atBeijingHour(8)), 'offPeak')
+  assert.equal(tierAt(atBeijingHour(12)), 'offPeak')
+  assert.equal(tierAt(atBeijingHour(13)), 'offPeak')
+  assert.equal(tierAt(atBeijingHour(18)), 'offPeak')
+  assert.equal(tierAt(atBeijingHour(23)), 'offPeak')
+  // 未知/非法时刻按高峰（保守）
+  assert.equal(tierAt(null), 'peak')
+  assert.equal(tierAt(undefined), 'peak')
+  assert.equal(tierAt(Number.NaN), 'peak')
+})
+
+test('costSplitAt bills in both official currencies per tier', () => {
+  const usage = { uncachedInputTokens: 1_000_000, outputTokens: 1_000_000, cacheReadTokens: 0, cacheWriteTokens: 0 }
+  const offPeakAt = Date.UTC(1970, 0, 1, 0, 0, 0) // 北京时间 08:00
+  const peakAt = Date.UTC(1970, 0, 1, 2, 0, 0) // 北京时间 10:00
+  // 空闲：flash 未命中 1.5 + 输出 4.5（CNY）；0.22 + 0.66（USD）
+  assert.deepEqual(costSplitAt(usage, PRICING['deepseek-v4-flash'], offPeakAt, 'cny'), { input: 1.5, cacheRead: 0, output: 4.5, total: 6 })
+  assert.deepEqual(costSplitAt(usage, PRICING['deepseek-v4-flash'], offPeakAt, 'usd'), { input: 0.22, cacheRead: 0, output: 0.66, total: 0.88 })
+  // 高峰 = 空闲 × 2
+  assert.deepEqual(costSplitAt(usage, PRICING['deepseek-v4-flash'], peakAt, 'cny'), { input: 3, cacheRead: 0, output: 9, total: 12 })
+  assert.deepEqual(costSplitAt(usage, PRICING['deepseek-v4-flash'], peakAt, 'usd'), { input: 0.44, cacheRead: 0, output: 1.32, total: 1.76 })
+})
+
+test('parsePricingFile validates entries and accepts dual-currency + legacy shapes', () => {
+  // 新格式：{ peak: { cny, usd }, offPeak: { cny, usd } } 双时段 × 双币种显式定价
+  const tiered = parsePricingFile(JSON.stringify({
+    'my-model': {
+      peak: { cny: { cacheMissInput: 2, cacheHitInput: 0.02, output: 4 }, usd: { cacheMissInput: 0.3, cacheHitInput: 0.003, output: 0.6 } },
+      offPeak: { cny: { cacheMissInput: 1, cacheHitInput: 0.01, output: 2 }, usd: { cacheMissInput: 0.15, cacheHitInput: 0.0015, output: 0.3 } },
+    },
+    'bad-peak': {
+      peak: { cny: { cacheMissInput: -1, cacheHitInput: 0, output: 0 }, usd: { cacheMissInput: 1, cacheHitInput: 0, output: 0 } },
+      offPeak: { cny: { cacheMissInput: 1, cacheHitInput: 0, output: 0 }, usd: { cacheMissInput: 1, cacheHitInput: 0, output: 0 } },
+    },
+  }))
+  assert.deepEqual(tiered['my-model'], {
+    peak: { cny: { cacheMissInput: 2, cacheHitInput: 0.02, output: 4 }, usd: { cacheMissInput: 0.3, cacheHitInput: 0.003, output: 0.6 } },
+    offPeak: { cny: { cacheMissInput: 1, cacheHitInput: 0.01, output: 2 }, usd: { cacheMissInput: 0.15, cacheHitInput: 0.0015, output: 0.3 } },
+  })
+  assert.equal(tiered['bad-peak'], undefined)
+
+  // 兼容①：时段单价平铺桶价 → 视为人民币，美元按默认汇率折算
+  const singleCny = parsePricingFile(JSON.stringify({
+    'single-cny': {
+      peak: { cacheMissInput: 2, cacheHitInput: 0.02, output: 4 },
+      offPeak: { cacheMissInput: 1, cacheHitInput: 0.01, output: 2 },
+    },
+  }))
+  assert.equal(singleCny['single-cny'].peak.cny.cacheMissInput, 2)
+  assert.equal(singleCny['single-cny'].peak.usd.cacheMissInput, 2 / 6.76)
+  assert.equal(singleCny['single-cny'].offPeak.cny.output, 2)
+  assert.equal(singleCny['single-cny'].offPeak.usd.output, 2 / 6.76)
+
+  // 兼容②：v0.1 平铺单价 → 高峰/空闲同价、人民币 + 折算美元
   const flat = parsePricingFile(JSON.stringify({
-    'my-model': { cacheMissInput: 1, cacheHitInput: 0.02, output: 2 },
-    'bad-model': { cacheMissInput: -1, cacheHitInput: 0, output: 0 },
+    'legacy-model': { cacheMissInput: 1, cacheHitInput: 0.02, output: 2 },
     'no-output': { cacheMissInput: 1 },
   }))
-  assert.deepEqual(flat['my-model'], { cacheMissInput: 1, cacheHitInput: 0.02, output: 2 })
-  assert.equal(flat['bad-model'], undefined)
+  assert.deepEqual(flat['legacy-model'], {
+    peak: { cny: { cacheMissInput: 1, cacheHitInput: 0.02, output: 2 }, usd: { cacheMissInput: 1 / 6.76, cacheHitInput: 0.02 / 6.76, output: 2 / 6.76 } },
+    offPeak: { cny: { cacheMissInput: 1, cacheHitInput: 0.02, output: 2 }, usd: { cacheMissInput: 1 / 6.76, cacheHitInput: 0.02 / 6.76, output: 2 / 6.76 } },
+  })
   assert.equal(flat['no-output'], undefined)
 
-  const nested = parsePricingFile(JSON.stringify({ models: { 'nested-model': { cacheMissInput: 3, cacheHitInput: 0.03, output: 4, verifiedAt: 1_700_000_000_000 } } }))
-  assert.equal(nested['nested-model'].cacheMissInput, 3)
+  const nested = parsePricingFile(JSON.stringify({
+    models: {
+      'nested-model': {
+        peak: { cny: { cacheMissInput: 3, cacheHitInput: 0.03, output: 4 }, usd: { cacheMissInput: 0.44, cacheHitInput: 0.0044, output: 0.59 } },
+        offPeak: { cny: { cacheMissInput: 1.5, cacheHitInput: 0.015, output: 2 }, usd: { cacheMissInput: 0.22, cacheHitInput: 0.0022, output: 0.29 } },
+        verifiedAt: 1_700_000_000_000,
+      },
+    },
+  }))
+  assert.equal(nested['nested-model'].peak.cny.cacheMissInput, 3)
+  assert.equal(nested['nested-model'].peak.usd.cacheMissInput, 0.44)
   assert.equal(nested['nested-model'].verifiedAt, 1_700_000_000_000)
 
   assert.deepEqual(parsePricingFile('not json'), {})
@@ -45,7 +143,11 @@ test('resolver prefers file override over builtin and marks unknown models', asy
   const dir = await mkdtemp(join(tmpdir(), 'duc-pricing-'))
   const file = join(dir, 'pricing.json')
   await writeFile(file, JSON.stringify({
-    'deepseek-v4-flash': { cacheMissInput: 9.99, cacheHitInput: 0.01, output: 0.5, verifiedAt: 1_800_000_000_000 },
+    'deepseek-v4-flash': {
+      peak: { cny: { cacheMissInput: 19.98, cacheHitInput: 0.02, output: 1.0 }, usd: { cacheMissInput: 2.96, cacheHitInput: 0.003, output: 0.15 } },
+      offPeak: { cny: { cacheMissInput: 9.99, cacheHitInput: 0.01, output: 0.5 }, usd: { cacheMissInput: 1.48, cacheHitInput: 0.0015, output: 0.074 } },
+      verifiedAt: 1_800_000_000_000,
+    },
     'custom-model': { cacheMissInput: 1, cacheHitInput: 0.02, output: 2 },
   }))
 
@@ -56,15 +158,19 @@ test('resolver prefers file override over builtin and marks unknown models', asy
     // 文件覆盖内置
     const flash = resolver.resolve('deepseek-v4-flash')
     assert.equal(flash.source, 'file')
-    assert.equal(flash.pricing.cacheMissInput, 9.99)
+    assert.equal(flash.pricing.offPeak.cny.cacheMissInput, 9.99)
+    assert.equal(flash.pricing.peak.cny.cacheMissInput, 19.98)
+    assert.equal(flash.pricing.peak.usd.cacheMissInput, 2.96)
     assert.equal(flash.verifiedAt, 1_800_000_000_000)
     assert.equal(flash.known, true)
     // 内置未覆盖的模型仍命中内置
     const pro = resolver.resolve('deepseek-v4-pro')
     assert.equal(pro.source, 'builtin')
-    assert.equal(pro.pricing.cacheMissInput, 0.435)
-    // 文件专属模型
-    assert.equal(resolver.resolve('custom-model').pricing.output, 2)
+    assert.deepEqual(pro.pricing.offPeak, PRO_OFF_PEAK)
+    // 文件专属模型（v0.1 平铺 → 高峰/空闲同价，美元按默认汇率折算）
+    assert.equal(resolver.resolve('custom-model').pricing.peak.cny.output, 2)
+    assert.equal(resolver.resolve('custom-model').pricing.offPeak.cny.output, 2)
+    assert.equal(resolver.resolve('custom-model').pricing.offPeak.usd.output, 2 / 6.76)
     // 未知模型 → 回退 + 显式标记
     const unknown = resolver.resolve('no-such-model')
     assert.equal(unknown.source, 'fallback')
@@ -89,11 +195,11 @@ test('file source serves prefix matches and refresh after rewrite', async () => 
   const source = filePricingSource(file)
   try {
     await source.ready()
-    assert.equal(source.resolve('v4-flash-x1').pricing.cacheMissInput, 1)
+    assert.equal(source.resolve('v4-flash-x1').pricing.offPeak.cny.cacheMissInput, 1)
     // 重写文件后 reload 应能读到新值（不依赖监听器时序）
     await writeFile(file, JSON.stringify({ 'v4-flash': { cacheMissInput: 7, cacheHitInput: 0.01, output: 2 } }))
     await source.reload()
-    assert.equal(source.resolve('v4-flash').pricing.cacheMissInput, 7)
+    assert.equal(source.resolve('v4-flash').pricing.offPeak.cny.cacheMissInput, 7)
   } finally {
     source.dispose()
     await rm(dir, { recursive: true, force: true })
@@ -101,11 +207,12 @@ test('file source serves prefix matches and refresh after rewrite', async () => 
 })
 
 test('estimateCost / pricingFor keep v0.1 compat semantics', () => {
-  assert.deepEqual(PRICING['deepseek-v4-flash'], { cacheMissInput: 0.14, cacheHitInput: 0.0028, output: 0.28 })
-  assert.equal(estimateCost({ uncachedInputTokens: 1_000_000, outputTokens: 1_000_000, cacheReadTokens: 0, cacheWriteTokens: 0 }, 'deepseek-v4-pro').usd, 1.305)
+  assert.deepEqual(PRICING['deepseek-v4-flash'], { peak: FLASH_PEAK, offPeak: FLASH_OFF_PEAK })
+  // 时刻未知 → 按高峰价保守估算：1M 未命中输入 + 1M 输出（v4-pro 高峰 CNY = 9 + 27）
+  assert.equal(estimateCost({ uncachedInputTokens: 1_000_000, outputTokens: 1_000_000, cacheReadTokens: 0, cacheWriteTokens: 0 }, 'deepseek-v4-pro').cny, 36)
   assert.equal(pricingFor('deepseek-v4-flash').estimated, false)
   assert.equal(pricingFor('unknown-model').estimated, true)
-  assert.equal(BUILTIN_VERIFIED_AT, Date.parse('2026-08-12T00:00:00Z'))
+  assert.equal(BUILTIN_VERIFIED_AT, Date.parse('2026-08-17T00:00:00Z'))
 })
 
 function responseRecorder() {
@@ -135,7 +242,9 @@ test('/pricing route exposes builtin + fallback + models snapshot', async () => 
   const body = JSON.parse(recorder.body)
   assert.equal(body.ok, true)
   assert.equal(body.builtinVerifiedAt, BUILTIN_VERIFIED_AT)
-  assert.equal(body.fallback.pricing.output, 0.28)
+  assert.equal(body.fallback.pricing.offPeak.cny.output, 4.5)
+  assert.equal(body.fallback.pricing.offPeak.usd.output, 0.66)
+  assert.equal(body.fallback.pricing.peak.usd.output, 1.32)
   const models = body.models.map((m) => m.model)
   assert.ok(models.includes('deepseek-v4-flash'))
   assert.ok(models.includes('deepseek-v4-pro'))

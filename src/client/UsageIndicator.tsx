@@ -53,7 +53,7 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
   const { useSession, useProjection, sessionId } = props
   const locale = useUiLocale()
   const copy = getUiCopy(locale)
-  const { currency, cnyPerUsd } = useDisplayCurrency()
+  const { currency } = useDisplayCurrency()
   const [expanded, setExpanded] = useState(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const toggleRef = useRef<HTMLButtonElement | null>(null)
@@ -64,12 +64,12 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
   const pressure = useProjection('contextPressure') as { pressureTokens?: number; projectedTokens?: number; contextWindow?: number } | undefined
   const nodes = useSession((s) => snapshotNodes(s))
   const model = useMemo(() => deriveModel(nodes), [nodes])
-  const observedRounds = useObservedRounds(totals, nodes)
-  const { status: balanceStatus, data: balanceData, load: loadBalance } = useBalance(true)
   const pricing = usePricing()
+  const observedRounds = useObservedRounds(totals, nodes, pricing.table, currency)
+  const { status: balanceStatus, data: balanceData, load: loadBalance } = useBalance(true)
 
   const hasTokens = totals !== undefined && (billedInputTokens(totals) > 0 || totals.outputTokens > 0)
-  const cost = totals !== undefined && pricing.table !== null ? resolveCost(pricing.table, totals, model) : undefined
+  const cost = totals !== undefined && pricing.table !== null ? resolveCost(pricing.table, totals, model, Date.now(), currency) : undefined
   const cacheHit = totals !== undefined ? cacheHitPercent(totals) : null
   const pressurePct = pressurePercent(pressure)
   const balance = balanceData?.balances?.[0]
@@ -127,7 +127,7 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
     parts.push({ key: 'output', text: `${copy.output} ${formatTokens(totals.outputTokens)}` })
     if (cacheHit !== null) parts.push({ key: 'cache', text: `${copy.cache} ${cacheHit}%` })
   }
-  if (cost !== undefined) parts.push({ key: 'cost', text: `${copy.cost} ${cost.estimated ? '≈' : ''}${formatMoney(cost.split.totalUsd, currency, cnyPerUsd)}`, estimated: cost.estimated })
+  if (cost !== undefined) parts.push({ key: 'cost', text: `${copy.cost} ${cost.estimated ? '≈' : ''}${formatMoney(cost.split.total, currency)}`, estimated: cost.estimated })
   if (model !== undefined) parts.push({ key: 'model', text: model.replace(/^deepseek-/, '') })
 
   const balanceLabel = balanceStatus === 'loading' || (balanceStatus === 'ok' && balance === undefined)
