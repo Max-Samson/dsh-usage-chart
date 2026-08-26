@@ -146,8 +146,8 @@ picked up live:
 ```
 
 Unit prices are **dual-currency (CNY + USD) per 1M tokens**: `peak` covers the official
-peak hours (Beijing time 09:00–12:00 and 14:00–18:00, i.e. UTC 01:00–04:00 and
-06:00–10:00, charged at 2×), `offPeak` covers the rest. The legacy flat shape
+peak hours (Beijing time Monday–Friday 09:00–12:00 and 14:00–18:00, i.e. UTC 01:00–04:00 and
+06:00–10:00, charged at 2×), `offPeak` covers the rest (including all weekends). The legacy flat shape
 `{ "cacheMissInput": …, "cacheHitInput": …, "output": … }` is still accepted and treated
 as tier-independent, quoted in CNY (USD derived at the default rate 6.76). `verifiedAt`
 (epoch ms) is optional and shown as the verification date in the panel. Models not

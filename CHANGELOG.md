@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). 中文版见 [CHANGELOG_ZH.md](./CHANGELOG_ZH.md).
 
+## [1.0.2] - 2026-08-26
+
+### Fixed
+
+- **Weekend off-peak tier rule**: `isPeakHour` and `tierAt` now take day-of-week into account — peak hours strictly apply to **Monday through Friday 09:00–12:00 and 14:00–18:00 (Beijing time / UTC+8)**; all hours on Saturday and Sunday are now correctly classified as off-peak (leisure/discount period).
+- **Builtin pricing coverage**: added `deepseek-v4-flash-vision-exp` to builtin pricing table (identical pricing to flash); updated `BUILTIN_VERIFIED_AT` to `2026-08-26`.
+
 ## [1.0.1] - 2026-08-17
 
 Billing updated to the latest DeepSeek pricing (official pricing pages, fetched 2026-08-17): prices are now quoted in **two currencies — CNY (Chinese page) and USD (English page) — per 1M tokens** with **peak / off-peak tiers** — peak hours (Beijing time 09:00–12:00 and 14:00–18:00, i.e. UTC 01:00–04:00 and 06:00–10:00) are billed at 2× the off-peak rate.

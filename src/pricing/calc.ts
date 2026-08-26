@@ -5,10 +5,11 @@
  * 不做来源解析——「价格从哪来、是否未知模型」由 PricingResolver（host）
  * 或 /pricing 快照（client）回答，见 source.ts / resolve.ts / pricing-api.ts。
  *
- * 计费口径（2026-08-17 官方定价页，中/英两页同价）：
+ * 计费口径（官方定价页，中/英两页同价）：
  *  - 官方刊例价同时以人民币（CNY）与美元（USD）报价（单位：/ 1M tokens）；
- *  - 区分「高峰 / 空闲」两个时段：高峰时段（北京时间 09:00–12:00、
- *    14:00–18:00，即 UTC 01:00–04:00、06:00–10:00）价格为空闲时段的两倍；
+ *  - 区分「高峰 / 空闲（休闲期 / 优惠期）」两个时段：
+ *    高峰时段为北京时间周一至周五 09:00–12:00、14:00–18:00（即 UTC 01:00–04:00、06:00–10:00），
+ *    价格为空闲时段的两倍；其余时段（周一至周五其余时间及周六、周日全天）为空闲时段；
  *  - 成本按所选显示币种、以该币种的官方刊例价直接计算（不做汇率换算）。
  */
 
@@ -27,7 +28,7 @@ export const ZERO_BUCKETS: TokenUsageBuckets = {
   cacheWriteTokens: 0,
 }
 
-/** 计费时段：高峰 / 空闲（官方：高峰 = 空闲 × 2，北京时间）。 */
+/** 计费时段：高峰 / 空闲（官方：高峰 = 空闲 × 2，北京时间周一至周五 9–12、14–18，其余及周末为空闲）。 */
 export type PriceTierId = 'peak' | 'offPeak'
 
 /** 成本/报价币种：人民币或美元（官方双币种刊例价）。 */
@@ -53,9 +54,9 @@ export interface PriceTier {
 
 /** 单模型刊例价（高峰 + 空闲双时段，每时段双币种）。 */
 export interface ModelPricing {
-  /** 高峰时段单价（北京时间 09:00–12:00、14:00–18:00）。 */
+  /** 高峰时段单价（北京时间周一至周五 09:00–12:00、14:00–18:00）。 */
   peak: PriceTier
-  /** 空闲时段单价（其余时段；官方为高峰的一半）。 */
+  /** 空闲时段单价（其余时段及周末全天；官方为高峰的一半）。 */
   offPeak: PriceTier
 }
 
@@ -72,22 +73,31 @@ export interface CostSplit {
 }
 
 /**
- * 高峰时段判定（北京时间，UTC+8，无夏令时）：09:00–12:00、14:00–18:00
- * （官方英文页同窗口：UTC 01:00–04:00、06:00–10:00）。
- * 输入为北京时间的小时数（0–23）。
+ * 高峰时段判定（北京时间，UTC+8，无夏令时）：周一至周五 09:00–12:00、14:00–18:00
+ * （官方英文页同窗口：UTC 01:00–04:00、06:00–10:00，Monday through Friday）。
+ * 周六、周日全天为空闲时段。
+ *
+ * @param beijingHour 北京时间小时数（0–23）
+ * @param beijingDayOfWeek 北京时间星期（0=周日，1=周一，...，6=周六；省略时按工作日判定以兼容旧调用）
  */
-export function isPeakHour(beijingHour: number): boolean {
+export function isPeakHour(beijingHour: number, beijingDayOfWeek?: number): boolean {
+  if (beijingDayOfWeek !== undefined && (beijingDayOfWeek === 0 || beijingDayOfWeek === 6)) {
+    return false
+  }
   return (beijingHour >= 9 && beijingHour < 12) || (beijingHour >= 14 && beijingHour < 18)
 }
 
 /**
  * 由时刻（epoch 毫秒）推断计费时段；时刻未知/非法时按高峰计
  * （保守：未知时刻不低估成本）。
+ * 内部按北京时间（UTC+8）换算星期与小时进行判定。
  */
 export function tierAt(timeMs: number | null | undefined): PriceTierId {
   if (timeMs === null || timeMs === undefined || !Number.isFinite(timeMs)) return 'peak'
-  const beijingHour = (new Date(timeMs).getUTCHours() + 8) % 24
-  return isPeakHour(beijingHour) ? 'peak' : 'offPeak'
+  const beijingDate = new Date(timeMs + 8 * 3_600_000)
+  const beijingDayOfWeek = beijingDate.getUTCDay()
+  const beijingHour = beijingDate.getUTCHours()
+  return isPeakHour(beijingHour, beijingDayOfWeek) ? 'peak' : 'offPeak'
 }
 
 /**

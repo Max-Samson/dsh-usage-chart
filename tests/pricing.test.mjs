@@ -14,11 +14,12 @@ import {
   estimateCost,
   filePricingSource,
   parsePricingFile,
+  isPeakHour,
   pricingFor,
   tierAt,
 } from '../lib/index.js'
 
-/** 2026-08-17 内置刊例价（双币种 /1M，高峰/空闲）。 */
+/** 2026-08-26 内置刊例价（双币种 /1M，高峰/空闲）。 */
 const FLASH_OFF_PEAK = {
   cny: { cacheMissInput: 1.5, cacheHitInput: 0.05, output: 4.5 },
   usd: { cacheMissInput: 0.22, cacheHitInput: 0.007, output: 0.66 },
@@ -44,26 +45,57 @@ test('builtin source resolves exact and prefixed models, misses unknown', () => 
   assert.equal(source.resolve('deepseek-v4-flash-2026-08-01').pricing.offPeak.cny.output, 4.5)
   assert.equal(source.resolve('deepseek-v4-flash-2026-08-01').pricing.offPeak.usd.output, 0.66)
   assert.equal(source.resolve('deepseek-v4-flash-2026-08-01').pricing.peak.usd.output, 1.32)
+  assert.deepEqual(source.resolve('deepseek-v4-flash-vision-exp').pricing.offPeak, FLASH_OFF_PEAK)
+  assert.deepEqual(source.resolve('deepseek-v4-flash-vision-exp').pricing.peak, FLASH_PEAK)
   assert.equal(source.resolve('unknown-model').pricing, null)
   assert.equal(source.resolve('DEEPSEEK-V4-PRO').pricing.offPeak.cny.cacheMissInput, 4.5, '大小写不敏感')
 })
+test('tierAt and isPeakHour map timestamps to peak/off-peak by Beijing time and weekday', () => {
+  // isPeakHour 单元测试（小时 + 星期）
+  assert.equal(isPeakHour(10), true, '默认工作日 10:00 高峰')
+  assert.equal(isPeakHour(8), false, '默认工作日 08:00 空闲')
+  assert.equal(isPeakHour(12), false, '默认工作日 12:00 空闲')
+  assert.equal(isPeakHour(15), true, '默认工作日 15:00 高峰')
+  assert.equal(isPeakHour(10, 1), true, '周一 10:00 高峰')
+  assert.equal(isPeakHour(10, 5), true, '周五 10:00 高峰')
+  assert.equal(isPeakHour(10, 6), false, '周六 10:00 空闲（周末全天空闲）')
+  assert.equal(isPeakHour(10, 0), false, '周日 10:00 空闲（周末全天空闲）')
+  assert.equal(isPeakHour(15, 6), false, '周六 15:00 空闲')
+  assert.equal(isPeakHour(15, 0), false, '周日 15:00 空闲')
 
-test('tierAt maps timestamps to peak/off-peak by Beijing time', () => {
-  // 基准：1970-01-01T00:00:00Z = 北京时间 08:00（空闲）。
-  const base = Date.UTC(1970, 0, 1, 0, 0, 0)
-  const atBeijingHour = (hour) => base + (hour - 8) * 3_600_000
-  // 高峰：09:00–12:00、14:00–18:00（北京时间 = UTC 01:00–04:00、06:00–10:00）
-  assert.equal(tierAt(atBeijingHour(9)), 'peak')
-  assert.equal(tierAt(atBeijingHour(10)), 'peak')
-  assert.equal(tierAt(atBeijingHour(11)), 'peak')
-  assert.equal(tierAt(atBeijingHour(14)), 'peak')
-  assert.equal(tierAt(atBeijingHour(17)), 'peak')
-  // 空闲：其余时段（含边界 12:00、13:00、18:00）
-  assert.equal(tierAt(atBeijingHour(8)), 'offPeak')
-  assert.equal(tierAt(atBeijingHour(12)), 'offPeak')
-  assert.equal(tierAt(atBeijingHour(13)), 'offPeak')
-  assert.equal(tierAt(atBeijingHour(18)), 'offPeak')
-  assert.equal(tierAt(atBeijingHour(23)), 'offPeak')
+  // 基准：1970-01-01T00:00:00Z = 北京时间 1970-01-01（周四）08:00（空闲）。
+  const baseThursday = Date.UTC(1970, 0, 1, 0, 0, 0)
+  const atBeijingThursday = (hour) => baseThursday + (hour - 8) * 3_600_000
+  // 工作日高峰：09:00–12:00、14:00–18:00（北京时间 = UTC 01:00–04:00、06:00–10:00）
+  assert.equal(tierAt(atBeijingThursday(9)), 'peak')
+  assert.equal(tierAt(atBeijingThursday(10)), 'peak')
+  assert.equal(tierAt(atBeijingThursday(11)), 'peak')
+  assert.equal(tierAt(atBeijingThursday(14)), 'peak')
+  assert.equal(tierAt(atBeijingThursday(17)), 'peak')
+  // 工作日空闲：其余时段（含边界 12:00、13:00、18:00）
+  assert.equal(tierAt(atBeijingThursday(8)), 'offPeak')
+  assert.equal(tierAt(atBeijingThursday(12)), 'offPeak')
+  assert.equal(tierAt(atBeijingThursday(13)), 'offPeak')
+  assert.equal(tierAt(atBeijingThursday(18)), 'offPeak')
+  assert.equal(tierAt(atBeijingThursday(23)), 'offPeak')
+
+  // 周六（1970-01-03）：全天空闲
+  const baseSaturday = Date.UTC(1970, 0, 3, 0, 0, 0)
+  const atBeijingSaturday = (hour) => baseSaturday + (hour - 8) * 3_600_000
+  assert.equal(tierAt(atBeijingSaturday(10)), 'offPeak')
+  assert.equal(tierAt(atBeijingSaturday(15)), 'offPeak')
+
+  // 周日（1970-01-04）：全天空闲
+  const baseSunday = Date.UTC(1970, 0, 4, 0, 0, 0)
+  const atBeijingSunday = (hour) => baseSunday + (hour - 8) * 3_600_000
+  assert.equal(tierAt(atBeijingSunday(10)), 'offPeak')
+  assert.equal(tierAt(atBeijingSunday(15)), 'offPeak')
+
+  // 周一（1970-01-05）：高峰时段恢复
+  const baseMonday = Date.UTC(1970, 0, 5, 0, 0, 0)
+  const atBeijingMonday = (hour) => baseMonday + (hour - 8) * 3_600_000
+  assert.equal(tierAt(atBeijingMonday(10)), 'peak')
+
   // 未知/非法时刻按高峰（保守）
   assert.equal(tierAt(null), 'peak')
   assert.equal(tierAt(undefined), 'peak')
@@ -212,7 +244,7 @@ test('estimateCost / pricingFor keep v0.1 compat semantics', () => {
   assert.equal(estimateCost({ uncachedInputTokens: 1_000_000, outputTokens: 1_000_000, cacheReadTokens: 0, cacheWriteTokens: 0 }, 'deepseek-v4-pro').cny, 36)
   assert.equal(pricingFor('deepseek-v4-flash').estimated, false)
   assert.equal(pricingFor('unknown-model').estimated, true)
-  assert.equal(BUILTIN_VERIFIED_AT, Date.parse('2026-08-17T00:00:00Z'))
+  assert.equal(BUILTIN_VERIFIED_AT, Date.parse('2026-08-26T00:00:00Z'))
 })
 
 function responseRecorder() {
@@ -248,4 +280,5 @@ test('/pricing route exposes builtin + fallback + models snapshot', async () => 
   const models = body.models.map((m) => m.model)
   assert.ok(models.includes('deepseek-v4-flash'))
   assert.ok(models.includes('deepseek-v4-pro'))
+  assert.ok(models.includes('deepseek-v4-flash-vision-exp'))
 })

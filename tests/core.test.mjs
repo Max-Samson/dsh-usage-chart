@@ -82,6 +82,7 @@ test('pricing matches the documented DeepSeek V4 prices (CNY + USD, peak/off-pea
       usd: { cacheMissInput: 0.44, cacheHitInput: 0.014, output: 1.32 },
     },
   })
+  assert.deepEqual(PRICING['deepseek-v4-flash-vision-exp'], PRICING['deepseek-v4-flash'])
   assert.equal(cacheHitPercent({ uncachedInputTokens: 50, outputTokens: 0, cacheReadTokens: 50, cacheWriteTokens: 0 }), 50)
   // 时刻未知 → 高峰价保守估算：1M 未命中输入 + 1M 输出（v4-pro 高峰 CNY = 9 + 27）
   assert.equal(estimateCost({ uncachedInputTokens: 1_000_000, outputTokens: 1_000_000, cacheReadTokens: 0, cacheWriteTokens: 0 }, 'deepseek-v4-pro').cny, 36)

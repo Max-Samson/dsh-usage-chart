@@ -143,7 +143,7 @@ const COPY: Record<UiLocale, UiCopy> = {
     segments: { miss: '未命中输入', hit: '缓存输入', output: '模型输出', write: '写入缓存' },
     tierLabel: '计费时段',
     tiers: { peak: '高峰时段', offPeak: '空闲时段' },
-    tierWindow: { peak: '北京时间 09:00–12:00、14:00–18:00，按 2 倍计费', offPeak: '其余时间，按高峰价的一半计费' },
+    tierWindow: { peak: '北京时间周一至周五 09:00–12:00、14:00–18:00，按 2 倍计费', offPeak: '其余时间（含周末全天），按高峰价的一半计费' },
     costLabel: '本轮成本', modelLabel: '模型', duration: '总耗时', ttft: 'TTFT', outputTps: '输出速率', endReason: '结束原因',
     endReasonLabel: (reason) => ({
       completed: '完成', aborted: '中断', blocked: '阻塞', error: '出错', 'max-tokens': '达上限', interrupted: '被打断',
@@ -189,7 +189,7 @@ const COPY: Record<UiLocale, UiCopy> = {
     segments: { miss: 'Cache-miss input', hit: 'Cached input', output: 'Model output', write: 'Cache write' },
     tierLabel: 'Billing tier',
     tiers: { peak: 'Peak', offPeak: 'Off-peak' },
-    tierWindow: { peak: 'Beijing time 09:00–12:00 & 14:00–18:00, billed at 2×', offPeak: 'all other hours, billed at half the peak rate' },
+    tierWindow: { peak: 'Beijing time Mon–Fri 09:00–12:00 & 14:00–18:00, billed at 2×', offPeak: 'all other hours (including weekends), billed at half the peak rate' },
     costLabel: 'Round cost', modelLabel: 'Model', duration: 'Duration', ttft: 'TTFT', outputTps: 'Output rate', endReason: 'End reason',
     endReasonLabel: (reason) => ({
       completed: 'Completed', aborted: 'Aborted', blocked: 'Blocked', error: 'Error', 'max-tokens': 'Max tokens', interrupted: 'Interrupted',

@@ -46,8 +46,8 @@ function occupancyPercent(pressure: ContextPressureView | undefined): number | n
 }
 
 /**
- * 当前计费时段（v1.0.1）：按北京时间实时判定高峰/空闲，跨整点自动翻转。
- * 高峰时段（北京时间 09:00–12:00、14:00–18:00）价格为空闲时段的 2 倍。
+ * 当前计费时段（v1.0.1）：按北京时间实时判定高峰/空闲，跨整点及周末自动翻转。
+ * 高峰时段（北京时间周一至周五 09:00–12:00、14:00–18:00）价格为空闲时段的 2 倍。
  */
 function useCurrentTier(): PriceTierId {
   const [now, setNow] = useState(() => Date.now())
