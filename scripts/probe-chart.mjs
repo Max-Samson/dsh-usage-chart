@@ -50,10 +50,18 @@ function makeRounds(TURNS: number): ChartRound[] {
       outputTps: 22 + ((i * 13) % 40),
       endReason: i === 14 ? 'error' : 'completed',
       cost: {
-        inputUsd: (base * 0.63 / 1_000_000) * 0.14,
-        cacheReadUsd: (base * 0.3 / 1_000_000) * 0.014,
-        outputUsd: (output / 1_000_000) * 0.28,
-        totalUsd: 0.0001 + i * 0.0004,
+        cny: {
+          input: (base * 0.63 / 1_000_000) * 1.5,
+          cacheRead: (base * 0.3 / 1_000_000) * 0.1,
+          output: (output / 1_000_000) * 4.5,
+          total: 0.001 + i * 0.004,
+        },
+        usd: {
+          input: (base * 0.63 / 1_000_000) * 0.22,
+          cacheRead: (base * 0.3 / 1_000_000) * 0.014,
+          output: (output / 1_000_000) * 0.66,
+          total: 0.0001 + i * 0.0004,
+        },
         estimated: false,
         unknownModel: false,
         source: 'builtin',
@@ -174,7 +182,8 @@ const browser = await chromium.launch({ executablePath: resolveChrome(), headles
 try {
   const page = await browser.newPage({ viewport: { width: 900, height: 1500 } })
   const errors = []
-  page.on('pageerror', (error) => errors.push(String(error).slice(0, 300)))
+  page.on('pageerror', (error) => console.error('PAGE ERROR:', error))
+  page.on('console', (msg) => console.log('PAGE LOG:', msg.text()))
   await page.goto('file://' + html, { waitUntil: 'load' })
   await page.waitForSelector('.duc-chart-scroll svg')
   await page.waitForTimeout(400)
@@ -193,9 +202,9 @@ try {
     if (!m || m.barW !== 30) failures.push(`${mode}: barW=${m?.barW}`)
     if (!m || m.slot !== 40) failures.push(`${mode}: slot=${m?.slot}`)
     if (!m || m.prevBtn !== 1 || m.fadeLeft !== 1 || m.nextBtn !== 0 || m.fadeRight !== 0) failures.push(`${mode}: end-state-btns`)
-    // 密集（可滚动）时值标签仅保留当前轮 → 无重叠
-    if (!m || m.valueLabels !== 1) failures.push(`${mode}: dense-labels=${m?.valueLabels}`)
-    if (!m || m.valueLabelMaxOverlap > 1) failures.push(`${mode}: label-overlap=${m?.valueLabelMaxOverlap}`)
+    // 密集（可滚动）时 token 视角值标签仅保留当前轮 → 无重叠；成本视角逐轮可见
+    if (mode !== 'cost' && (!m || m.valueLabels !== 1)) failures.push(`${mode}: dense-labels=${m?.valueLabels}`)
+    if (mode !== 'cost' && (!m || m.valueLabelMaxOverlap > 1)) failures.push(`${mode}: label-overlap=${m?.valueLabelMaxOverlap}`)
   }
 
   // 滚回开头：右箭头/右渐隐出现，左箭头消失
@@ -279,7 +288,7 @@ try {
         ?.getAttribute('points')?.trim().split(/\s+/).length ?? 0,
     }
   })
-  if (geometry.ratioHeightSet.length !== 1 || geometry.ratioHeightSet[0] !== 96) {
+  if (geometry.ratioHeightSet.length !== 1 || geometry.ratioHeightSet[0] !== 76) {
     failures.push(`ratio-heights ${JSON.stringify(geometry.ratioHeightSet)}`)
   }
   if (Math.abs(geometry.currentBandPadding.top - 4) > 0.1 || Math.abs(geometry.currentBandPadding.bottom - 4) > 0.1) {

@@ -156,7 +156,6 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
                 { label: copy.segments.write, value: totals.cacheWriteTokens, color: SEGMENT_COLORS.write },
               ]}
             />
-            <Legend items={tokenLegend(copy)} />
           </>
         ) : (
           <div className="duc-empty">{copy.sessionEmpty}</div>
@@ -168,6 +167,7 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
           <h4>{copy.contextDiagnostics}</h4>
           <span className="duc-section-meta">
             {occupancy !== null ? `${copy.contextUsage} ${occupancy}%` : copy.unavailable}
+            {contextReport.compaction.count > 0 ? ` · ✂️ ${formatTokens(contextReport.compaction.totalFreedTokens)}` : ''}
           </span>
         </div>
         {contextReport.breakdown.isAvailable ? (
@@ -197,9 +197,9 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
           <div className="duc-empty">{copy.unavailable}</div>
         )}
 
-        {contextReport.compaction.count > 0 ? (
+        {contextReport.compaction.count > 0 && (
           <div className="duc-compaction-list">
-            <div className="duc-note" style={{ marginTop: '6px', fontWeight: 600 }}>
+            <div className="duc-note" style={{ marginTop: '4px', fontWeight: 600 }}>
               {copy.compactionSavingsTotal(formatTokens(contextReport.compaction.totalFreedTokens), contextReport.compaction.count)}
             </div>
             {contextReport.compaction.items.map((item) => (
@@ -216,8 +216,6 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
               </div>
             ))}
           </div>
-        ) : (
-          <div className="duc-note">{copy.compactionEmpty}</div>
         )}
 
         {contextReport.suggestion === 'critical' && (

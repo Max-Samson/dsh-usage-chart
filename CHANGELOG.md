@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). 中文版见 [CHANGELOG_ZH.md](./CHANGELOG_ZH.md).
 
+## [1.1.1] - 2026-08-26
+
+### Improved & Fixed
+
+- **Compact Panel UI & Vertical Overflow Elimination**:
+  - **Height Reduction**: Tightened `.duc-section` vertical padding from `12px` to `8px`, compacted `.duc-cell` padding from `8px 9px` to `5px 8px`, reduced bar heights and line-heights. Overall panel height shrinks from ~800px to ~560px (~170px reduction), allowing the full dashboard to fit comfortably in viewport without vertical scrolling.
+  - **Removed Redundant Legend**: Eliminated the duplicate 4-color legend row in the "Session Usage" section (values are already labeled in the 4 grid cards above; chart legend remains intact in the per-round section).
+  - **Lightweight Compaction Empty State**: When no compaction has occurred, the placeholder row is omitted to save vertical space; compaction details are shown only when compactions exist.
+  - **SVG Chart Height Optimization**: Reduced `RoundBars` baseline height from `96px` to `76px` (canvas height reduced from `166px` to `132px`), keeping all scroll arrows, duration lines, anomaly markers, and hover tooltips aligned and legible.
+  - **Robustness Defense**: Added fallback defaults for missing `currency` parameter (`'cny'`) and safe optional chaining on `round.cost` in `RoundBars`.
+
 ## [1.1.0] - 2026-08-26
 
 Milestone release: **Context Explainability & Compaction Diagnostics**. Turns "why context grows, which round got compacted, how many tokens were freed, and how much the summarize step cost" into an interpretable view (dock indicator + dedicated panel diagnostics section), alongside user/message input source attribution.

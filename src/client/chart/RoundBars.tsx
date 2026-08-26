@@ -18,7 +18,7 @@ import { useId, useLayoutEffect, useRef, useState } from 'react'
 import { cacheHitPercent, formatDuration, formatMoney, formatTokens, tierAt, type CostCurrency, type TokenUsageBuckets } from '../../pricing/calc.ts'
 import { SEGMENT_COLORS } from '../charts.tsx'
 import type { AnomalyFlag } from '../diagnose/anomaly.ts'
-import { getUiCopy, type UiLocale } from '../i18n.ts'
+import { getUiCopy, type UiCopy, type UiLocale } from '../i18n.ts'
 import type { ChartRound } from '../rounds/types.ts'
 
 export type RoundChartMode = 'absolute' | 'ratio' | 'cost'
@@ -29,11 +29,11 @@ export interface Segment {
   color: string
 }
 
-const BAR_HEIGHT = 96
+const BAR_HEIGHT = 76
 const PAD_X = 10
-const PAD_TOP = 22
-const LABEL_HEIGHT = 22
-const TICK_HEIGHT = 26
+const PAD_TOP = 18
+const LABEL_HEIGHT = 18
+const TICK_HEIGHT = 20
 /** 固定细柱宽与柱间距：无论轮次多少柱宽恒定，视觉不再随数据拥挤。 */
 const BAR_WIDTH = 30
 const GAP = 10
@@ -53,7 +53,7 @@ function tokenTotal(b: TokenUsageBuckets): number {
   return b.uncachedInputTokens + b.cacheReadTokens + b.outputTokens + b.cacheWriteTokens
 }
 
-function tokenSegments(copy: ReturnType<typeof getUiCopy>, b: TokenUsageBuckets): Segment[] {
+function tokenSegments(copy: UiCopy, b: TokenUsageBuckets): Segment[] {
   return [
     { label: copy.segments.miss, value: b.uncachedInputTokens, color: SEGMENT_COLORS.miss },
     { label: copy.segments.hit, value: b.cacheReadTokens, color: SEGMENT_COLORS.hit },
@@ -62,10 +62,11 @@ function tokenSegments(copy: ReturnType<typeof getUiCopy>, b: TokenUsageBuckets)
   ]
 }
 
-function costSegments(copy: ReturnType<typeof getUiCopy>, round: ChartRound, currency: CostCurrency): Segment[] {
+function costSegments(copy: UiCopy, round: ChartRound, currency: CostCurrency): Segment[] {
   const cost = round.cost
-  if (cost === null) return []
-  const split = cost[currency]
+  if (cost === null || typeof cost !== 'object') return []
+  const split = cost[currency] ?? cost.cny ?? cost.usd
+  if (split === undefined || split === null) return []
   return [
     { label: copy.inputCost, value: split.input, color: SEGMENT_COLORS.miss },
     { label: copy.segments.hit, value: split.cacheRead, color: SEGMENT_COLORS.hit },
@@ -75,7 +76,7 @@ function costSegments(copy: ReturnType<typeof getUiCopy>, round: ChartRound, cur
 
 /** 该轮在本视角下的「总量」（决定柱高/值标签）。 */
 function roundTotal(round: ChartRound, mode: RoundChartMode, currency: CostCurrency): number {
-  if (mode === 'cost') return round.cost?.[currency].total ?? 0
+  if (mode === 'cost') return round.cost?.[currency]?.total ?? 0
   return tokenTotal(round.buckets)
 }
 
@@ -92,14 +93,14 @@ export function RoundBars({
   mode = 'absolute',
   flags = [],
   locale,
-  currency,
+  currency = 'cny',
 }: {
   rounds: readonly ChartRound[]
   mode?: RoundChartMode
   flags?: readonly AnomalyFlag[]
   locale: UiLocale
   /** 成本视角的显示币种（官方 CNY / USD 刊例价）。 */
-  currency: CostCurrency
+  currency?: CostCurrency
 }): JSX.Element | null {
   const tooltipId = useId()
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
@@ -208,7 +209,7 @@ export function RoundBars({
             const durationOffset = round.durationMs !== null && hasDuration
               ? Math.min(DURATION_BAND, (round.durationMs / maxDuration) * DURATION_BAND)
               : 0
-            const valueY = Math.max(16 + durationOffset, baseline - totalHeight - 6)
+            const valueY = Math.max(14 + durationOffset, baseline - totalHeight - 4)
             const isActive = activeIndex === i
             const isCurrent = i === n - 1
             const flag = flagByTurn.get(round.turn)
