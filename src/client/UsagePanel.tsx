@@ -14,11 +14,11 @@ import { refreshLiveRate, setDisplayCurrency, useDisplayCurrency } from './curre
 import { RoundBars, type RoundChartMode } from './chart/RoundBars.tsx'
 import { HStack, Legend, SEGMENT_COLORS, tokenLegend } from './charts.tsx'
 import { flagAnomalies } from './diagnose/anomaly.ts'
+import { analyzeContext, type ContextBreakdownData } from './diagnose/context.ts'
 import { getUiCopy, type UiLocale } from './i18n.ts'
 import { resolvePricing, usePricing } from './pricing-api.ts'
 import { useHistoryRounds } from './rounds/history.ts'
 import type { ChartRound } from './rounds/types.ts'
-
 export interface ContextPressureView {
   pressureTokens?: number
   projectedTokens?: number
@@ -33,6 +33,7 @@ export interface UsagePanelProps {
   /** 回退：本页观测的每轮增量（仅当宿主历史不可用时展示）。 */
   observedRounds: readonly ChartRound[]
   pressure: ContextPressureView | undefined
+  breakdown?: ContextBreakdownData
   /** 余额状态由指示器共享（同一实例，避免重复查询）。 */
   balanceStatus: BalanceStatus
   balanceData: BalanceData | null
@@ -62,7 +63,7 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
   const [chartMode, setChartMode] = useState<RoundChartMode>('absolute')
   const [rateStatus, setRateStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
   const {
-    sessionId, locale, totals, model, observedRounds, pressure,
+    sessionId, locale, totals, model, observedRounds, pressure, breakdown,
     balanceStatus: status, balanceData: data, loadBalance: load,
   } = props
   const copy = getUiCopy(locale)
@@ -82,7 +83,10 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
   const historyRounds = history.status === 'ok' ? history.rounds : null
   const chartRounds = historyRounds ?? observedRounds
   const flags = useMemo(() => flagAnomalies(historyRounds ?? []), [historyRounds])
-
+  const contextReport = useMemo(
+    () => analyzeContext(pressure, breakdown, history.compactions, currency),
+    [pressure, breakdown, history.compactions, currency],
+  )
   // 成本估算：价格唯一输入是 /pricing 快照（ADR 2）；快照不可用则降级提示。
   // 模型归因优先 host 折叠（ADR 1 权威基准），快照 provenance 推导仅作回退。
   const hostModel = useMemo(() => {
@@ -158,6 +162,72 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
           <div className="duc-empty">{copy.sessionEmpty}</div>
         )}
       </section>
+      {/* v1.1.0：上下文构成与压缩诊断 */}
+      <section className="duc-section">
+        <div className="duc-section-head">
+          <h4>{copy.contextDiagnostics}</h4>
+          <span className="duc-section-meta">
+            {occupancy !== null ? `${copy.contextUsage} ${occupancy}%` : copy.unavailable}
+          </span>
+        </div>
+        {contextReport.breakdown.isAvailable ? (
+          <>
+            <div className="duc-grid" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+              <div className="duc-cell">
+                <b>{formatTokens(contextReport.breakdown.system.tokens)}</b>
+                <span>{copy.systemTokens} ({contextReport.breakdown.system.percent}%)</span>
+              </div>
+              <div className="duc-cell">
+                <b>{formatTokens(contextReport.breakdown.tools.tokens)}</b>
+                <span>{copy.toolsTokens} ({contextReport.breakdown.tools.percent}%)</span>
+              </div>
+              <div className="duc-cell">
+                <b>{formatTokens(contextReport.breakdown.messages.tokens)}</b>
+                <span>{copy.messageTokens} ({contextReport.breakdown.messages.percent}%)</span>
+              </div>
+            </div>
+            <div className="duc-context-bar">
+              <span style={{ width: `${contextReport.breakdown.system.percent}%`, background: 'var(--duc-hit, #45a9c7)' }} />
+              <span style={{ width: `${contextReport.breakdown.tools.percent}%`, background: 'var(--duc-write, #d99a2b)' }} />
+              <span style={{ width: `${contextReport.breakdown.messages.percent}%`, background: 'var(--duc-output, #43b96f)' }} />
+            </div>
+            <div className="duc-note">{copy.contextApproxNote}</div>
+          </>
+        ) : (
+          <div className="duc-empty">{copy.unavailable}</div>
+        )}
+
+        {contextReport.compaction.count > 0 ? (
+          <div className="duc-compaction-list">
+            <div className="duc-note" style={{ marginTop: '6px', fontWeight: 600 }}>
+              {copy.compactionSavingsTotal(formatTokens(contextReport.compaction.totalFreedTokens), contextReport.compaction.count)}
+            </div>
+            {contextReport.compaction.items.map((item) => (
+              <div key={item.seq} className="duc-compaction-item">
+                <div className="duc-compaction-item-left">
+                  <span className="duc-compaction-badge">{copy.compactionRound(item.turn)}</span>
+                  <span className="duc-compaction-freed">✂️ {copy.compactionFreed(formatTokens(item.shadowedTokens))}</span>
+                </div>
+                <div className="duc-compaction-cost">
+                  {item.costCny !== null
+                    ? copy.compactionCost(formatMoney(currency === 'cny' ? item.costCny : (item.costUsd ?? item.costCny / cnyPerUsd), currency))
+                    : ''}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="duc-note">{copy.compactionEmpty}</div>
+        )}
+
+        {contextReport.suggestion === 'critical' && (
+          <div className="duc-suggestion duc-suggestion-critical">{copy.contextSuggestionCritical}</div>
+        )}
+        {contextReport.suggestion === 'caution' && (
+          <div className="duc-suggestion duc-suggestion-caution">{copy.contextSuggestionCaution}</div>
+        )}
+      </section>
+
 
       <section className="duc-section">
         <div className="duc-section-head">

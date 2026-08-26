@@ -12,13 +12,14 @@ import { getUiCopy, useUiLocale } from './i18n.ts'
 import { resolveCost, usePricing } from './pricing-api.ts'
 import { useObservedRounds } from './rounds/observed.ts'
 import { snapshotNodes, type ConversationNode, type ConversationSnapshot } from './snapshot.ts'
+import type { ContextBreakdownData } from './diagnose/context.ts'
 import { UsagePanel } from './UsagePanel.tsx'
 
 export interface DockUsageProps {
   /** 会话快照选择器（framework 标准套件）。 */
   useSession: <S>(selector: (s: ConversationSnapshot) => S) => S
   /** 投影读取钩子（framework 标准套件）。 */
-  useProjection: (key: 'tokenUsage' | 'contextPressure') => unknown
+  useProjection: (key: 'tokenUsage' | 'contextPressure' | 'contextBreakdown') => unknown
   sessionId: string
   session: ConversationSnapshot
   input: unknown
@@ -62,6 +63,7 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
 
   const totals = useProjection('tokenUsage') as TokenUsageBuckets | undefined
   const pressure = useProjection('contextPressure') as { pressureTokens?: number; projectedTokens?: number; contextWindow?: number } | undefined
+  const breakdown = useProjection('contextBreakdown') as ContextBreakdownData | undefined
   const nodes = useSession((s) => snapshotNodes(s))
   const model = useMemo(() => deriveModel(nodes), [nodes])
   const pricing = usePricing()
@@ -72,8 +74,15 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
   const cost = totals !== undefined && pricing.table !== null ? resolveCost(pricing.table, totals, model, Date.now(), currency) : undefined
   const cacheHit = totals !== undefined ? cacheHitPercent(totals) : null
   const pressurePct = pressurePercent(pressure)
+  const breakdownTotal = (breakdown?.systemTokens ?? 0) + (breakdown?.toolsTokens ?? 0) + (breakdown?.messageTokens ?? 0)
+  const hasBreakdown = breakdownTotal > 0 && pressurePct !== null
+  const sysW = hasBreakdown ? Math.max(1, Math.round(((breakdown?.systemTokens ?? 0) / breakdownTotal) * pressurePct)) : 0
+  const toolW = hasBreakdown ? Math.max(0, Math.round(((breakdown?.toolsTokens ?? 0) / breakdownTotal) * pressurePct)) : 0
+  const msgW = hasBreakdown ? Math.max(0, pressurePct - sysW - toolW) : 0
+  const pressureTitle = pressurePct === null ? '' : hasBreakdown
+    ? `${copy.pressureBarTitle(pressurePct)} (${copy.systemTokens} ${Math.round(((breakdown?.systemTokens ?? 0) / breakdownTotal) * 100)}% · ${copy.toolsTokens} ${Math.round(((breakdown?.toolsTokens ?? 0) / breakdownTotal) * 100)}% · ${copy.messageTokens} ${Math.round(((breakdown?.messageTokens ?? 0) / breakdownTotal) * 100)}%)`
+    : copy.pressureBarTitle(pressurePct)
   const balance = balanceData?.balances?.[0]
-
   // 计算悬浮面板锚点：贴在指示器行上方、左右对齐输入框。
   const updateAnchor = useMemo(() => () => {
     const el = rootRef.current
@@ -166,10 +175,18 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
           className="duc-pressure"
           role="img"
           aria-label={copy.pressureBarLabel(`${pressurePct}%`)}
-          title={copy.pressureBarTitle(pressurePct)}
-          data-level={pressurePct >= 90 ? 'critical' : pressurePct >= 70 ? 'high' : undefined}
+          title={pressureTitle}
+          data-level={pressurePct >= 90 ? 'critical' : pressurePct >= 75 ? 'high' : undefined}
         >
-          <i style={{ width: `${pressurePct}%` }} />
+          {hasBreakdown ? (
+            <>
+              <span className="duc-pressure-seg duc-pressure-seg-system" style={{ width: `${sysW}%` }} />
+              <span className="duc-pressure-seg duc-pressure-seg-tools" style={{ width: `${toolW}%` }} />
+              <span className="duc-pressure-seg duc-pressure-seg-messages" style={{ width: `${msgW}%` }} />
+            </>
+          ) : (
+            <i style={{ width: `${pressurePct}%` }} />
+          )}
         </span>
       )}
       <button
@@ -192,6 +209,7 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
             model={model}
             observedRounds={observedRounds}
             pressure={pressure}
+            breakdown={breakdown}
             balanceStatus={balanceStatus}
             balanceData={balanceData}
             loadBalance={loadBalance}

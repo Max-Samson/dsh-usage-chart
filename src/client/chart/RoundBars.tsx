@@ -359,6 +359,20 @@ export function RoundBars({
             <span>{copy.ttft}<b>{formatDuration(activeRound.ttftMs)}</b></span>
             {activeRound.outputTps !== null && <span>{copy.outputTps}<b>{Math.round(activeRound.outputTps)} t/s</b></span>}
             {cacheHitPercent(activeRound.buckets) !== null && <span>{copy.cacheHit}<b>{cacheHitPercent(activeRound.buckets)}%</b></span>}
+            {activeRound.userSource !== undefined && activeRound.userSource !== null && (
+              <span>
+                {copy.userSourceLabel}
+                <b>
+                  {copy.userSources[
+                    activeRound.userSource.toLowerCase().includes('agent')
+                      ? 'agent'
+                      : activeRound.userSource.toLowerCase().includes('continuation') || activeRound.userSource.toLowerCase().includes('goal')
+                        ? 'continuation'
+                        : 'human'
+                  ] ?? activeRound.userSource}
+                </b>
+              </span>
+            )}
             {activeRound.endReason !== null && <span>{copy.endReason}<b>{copy.endReasonLabel(activeRound.endReason)}</b></span>}
           </div>
           {(() => {

@@ -55,7 +55,8 @@ import {
   filePricingSource,
 } from './pricing/source.ts'
 import { createPricingResolver } from './pricing/resolve.ts'
-import { foldRounds } from './usage/rounds.ts'
+import { foldRounds, type SessionEventLike } from './usage/rounds.ts'
+import { foldCompactions } from './usage/compactions.ts'
 
 export {
   BUILTIN_PRICING,
@@ -77,6 +78,8 @@ export { BUILTIN_PRICING as PRICING } from './pricing/source.ts'
 // ── RoundFold（host 折叠，权威基准）────────────────────────────────────────
 export { foldRounds, foldTurnUsage } from './usage/rounds.ts'
 export type { FoldResult, RoundCost, SessionEventLike, UsageRound } from './usage/rounds.ts'
+export { foldCompactions } from './usage/compactions.ts'
+export type { CompactionRecord } from './usage/compactions.ts'
 
 export const name = 'dsh-usage-chart'
 
@@ -399,8 +402,10 @@ export function apply(ctx: Context, config: Config = {}): void {
         writeJson(res, 404, { ok: false, reason: 'session-not-found' })
         return
       }
-      const { totals, rounds } = foldRounds(session.events as readonly import('./usage/rounds.ts').SessionEventLike[], resolver)
-      writeJson(res, 200, { ok: true, sessionId, totals, rounds })
+      const events = session.events as readonly SessionEventLike[]
+      const { totals, rounds } = foldRounds(events, resolver)
+      const compactions = foldCompactions(events, resolver)
+      writeJson(res, 200, { ok: true, sessionId, totals, rounds, compactions })
     },
   }), 'dsh-usage-chart: usage route')
 

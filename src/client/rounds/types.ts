@@ -3,6 +3,7 @@
  * 与本页观测增量共用同一 ChartRound 形状，图表只认这一个类型。
  */
 import type { CostSplit, TokenUsageBuckets } from '../../pricing/calc.ts'
+import type { CompactionRecord } from '../../usage/compactions.ts'
 
 /** 每轮成本（来自 host 折叠，官方 CNY/USD 双币种各一份；观测增量路径为 null）。 */
 export interface ChartCost {
@@ -29,6 +30,7 @@ export interface ChartRound {
   ttftMs: number | null
   outputTps: number | null
   endReason: string | null
+  userSource?: string | null
   cost: ChartCost | null
 }
 
@@ -38,6 +40,7 @@ export interface UsageResponse {
   sessionId?: string
   totals?: TokenUsageBuckets
   rounds?: ChartRound[]
+  compactions?: CompactionRecord[]
   reason?: string
 }
 

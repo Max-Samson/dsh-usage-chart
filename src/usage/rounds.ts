@@ -28,7 +28,8 @@ export interface SessionEventLike {
     provider?: string
     model?: string
     contextWindow?: number
-    header?: { config?: { provider?: string; model?: string } }
+    source?: string
+    header?: { config?: { provider?: string; model?: string }; source?: string }
     chunk?: { type?: string; usage?: unknown }
     usage?: unknown
   }
@@ -68,9 +69,10 @@ export interface UsageRound {
   outputTps: number | null
   /** turn/end.reason.kind；未结束为 null。 */
   endReason: string | null
+  /** 用户输入来源归因（'human' | 'agent.inject' | 'goal.continuation' 等，缺省为 null）。 */
+  userSource: string | null
   cost: RoundCost
 }
-
 export interface FoldResult {
   totals: TokenUsageBuckets
   rounds: UsageRound[]
@@ -119,8 +121,8 @@ interface TurnState {
   /** 首个 usage 样本的时间（TTFT 右端点）。 */
   firstUsageAt: number | null
   buckets: TokenUsageBuckets
+  userSource: string | null
 }
-
 function turnReasonOf(reason: unknown): string | null {
   if (typeof reason === 'string' && reason !== '') return reason
   if (typeof reason === 'object' && reason !== null) {
@@ -158,12 +160,11 @@ export function foldRounds(events: readonly SessionEventLike[], resolvePricing?:
   let stepBuckets: TokenUsageBuckets | null = null
 
   const commitStep = (turn: number, buckets: TokenUsageBuckets): void => {
-    const state = states.get(turn) ?? { start: null, end: null, endReason: null, model: null, firstUsageAt: null, buckets: zeroBuckets() }
+    const state = states.get(turn) ?? { start: null, end: null, endReason: null, model: null, firstUsageAt: null, buckets: zeroBuckets(), userSource: null }
     addInto(state.buckets, buckets)
     states.set(turn, state)
     addInto(totals, buckets)
   }
-
   const recordUsageAt = (turn: number, time: number): void => {
     const state = states.get(turn)
     if (state === undefined) return
@@ -187,7 +188,7 @@ export function foldRounds(events: readonly SessionEventLike[], resolvePricing?:
       case 'turn/start': {
         const turn = data.turn ?? -1
         openTurn = turn
-        const state = states.get(turn) ?? { start: null, end: null, endReason: null, model: null, firstUsageAt: null, buckets: zeroBuckets() }
+        const state = states.get(turn) ?? { start: null, end: null, endReason: null, model: null, firstUsageAt: null, buckets: zeroBuckets(), userSource: null }
         if (state.start === null) state.start = time
         states.set(turn, state)
         break
@@ -214,6 +215,18 @@ export function foldRounds(events: readonly SessionEventLike[], resolvePricing?:
       }
       case 'request/header': {
         attributeModel(data.header?.config?.model ?? null)
+        break
+      }
+      case 'user/message': {
+        const targetTurn = openStepTurn ?? openTurn ?? data.turn
+        if (targetTurn !== undefined && targetTurn !== null) {
+          const state = states.get(targetTurn) ?? { start: null, end: null, endReason: null, model: null, firstUsageAt: null, buckets: zeroBuckets(), userSource: null }
+          if (state.userSource === null) {
+            const src = typeof data.source === 'string' ? data.source : typeof data.header?.source === 'string' ? data.header.source : 'human'
+            state.userSource = src
+          }
+          states.set(targetTurn, state)
+        }
         break
       }
       default: {
@@ -283,6 +296,7 @@ export function foldRounds(events: readonly SessionEventLike[], resolvePricing?:
       ttftMs,
       outputTps,
       endReason: state.endReason,
+      userSource: state.userSource,
       cost,
     })
   }

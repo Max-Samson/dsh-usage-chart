@@ -355,15 +355,16 @@ body[data-ds-dark-theme] .duc-popover { box-shadow: 0 16px 40px rgba(0, 0, 0, 0.
 .duc-badge-unknown { border-color: color-mix(in srgb, var(--duc-write) 50%, transparent); }
 .duc-badge-mark { color: var(--duc-write); font-size: 9px; }
 
-/* v0.2：Dock 细上下文压力条 */
+/* v0.2 / v1.1：Dock 细上下文压力条（支持单色与多段构成） */
 .duc-pressure {
-  display: inline-block;
-  width: 44px;
+  display: inline-flex;
+  width: 46px;
   height: 4px;
   overflow: hidden;
   border-radius: 2px;
   background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.2));
   cursor: default;
+  vertical-align: middle;
 }
 .duc-pressure i {
   display: block;
@@ -374,7 +375,10 @@ body[data-ds-dark-theme] .duc-popover { box-shadow: 0 16px 40px rgba(0, 0, 0, 0.
 }
 .duc-pressure[data-level="high"] i { background: var(--duc-write); }
 .duc-pressure[data-level="critical"] i { background: var(--duc-anomaly); }
-
+.duc-pressure-seg { height: 100%; min-width: 1px; }
+.duc-pressure-seg-system { background: var(--duc-hit, #45a9c7); }
+.duc-pressure-seg-tools { background: var(--duc-write, #d99a2b); }
+.duc-pressure-seg-messages { background: var(--duc-output, #43b96f); }
 .duc-chart-tooltip {
   position: absolute;
   z-index: 2;
@@ -497,6 +501,76 @@ body[data-ds-dark-theme] .duc-chart-tooltip { box-shadow: 0 10px 24px rgba(0, 0,
 .duc-balance-skeleton span { display: block; border-radius: 4px; background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.1)); }
 .duc-balance-skeleton i { width: 88px; height: 19px; }
 .duc-balance-skeleton span { width: 58%; height: 10px; }
+
+/* v1.1.0：上下文与压缩诊断模块样式 */
+.duc-context-bar {
+  display: flex;
+  width: 100%;
+  height: 8px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.08));
+}
+.duc-context-bar span { min-width: 1px; height: 100%; }
+.duc-context-bar span + span { border-left: 1px solid var(--dsw-alias-bg-layer-2, rgba(30, 31, 34, 0.92)); }
+
+.duc-compaction-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.duc-compaction-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 9px;
+  border: 1px solid var(--dsw-alias-border-l3, rgba(127, 127, 127, 0.18));
+  border-radius: 6px;
+  background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.05));
+  font-size: 11px;
+}
+.duc-compaction-item-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.duc-compaction-badge {
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--duc-miss) 16%, transparent);
+  color: var(--duc-miss);
+  font-size: 9.5px;
+  font-weight: 600;
+}
+.duc-compaction-freed {
+  color: var(--duc-output);
+  font-weight: 600;
+}
+.duc-compaction-cost {
+  color: var(--dsw-alias-label-tertiary, rgba(255, 255, 255, 0.58));
+  font-size: 10px;
+}
+
+.duc-suggestion {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+.duc-suggestion-caution {
+  border: 1px solid color-mix(in srgb, var(--duc-write) 35%, transparent);
+  background: color-mix(in srgb, var(--duc-write) 10%, transparent);
+  color: var(--duc-write);
+}
+.duc-suggestion-critical {
+  border: 1px solid color-mix(in srgb, var(--duc-anomaly) 35%, transparent);
+  background: color-mix(in srgb, var(--duc-anomaly) 10%, transparent);
+  color: var(--duc-anomaly);
+}
 
 @media (max-width: 420px) {
   .duc-panel { padding-inline: 12px; }

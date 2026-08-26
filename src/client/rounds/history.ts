@@ -1,5 +1,5 @@
 /**
- * HistoryFeed（= 原 useSessionUsage）：host `/usage` 完整历史折叠 → rounds。
+ * HistoryFeed（= 原 useSessionUsage）：host `/usage` 完整历史折叠 → rounds + compactions。
  *
  * 面板与徽章专用（权威基准）；失败时由调用方回退到 LiveObservation
  * 增量（如实标注）。模块级 in-flight 去重：同一会话多个消费者
@@ -7,6 +7,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import type { TokenUsageBuckets } from '../../pricing/calc.ts'
+import type { CompactionRecord } from '../../usage/compactions.ts'
 import type { ChartRound, UsageResponse, UsageStatus } from './types.ts'
 
 const inflight = new Map<string, Promise<UsageResponse>>()
@@ -35,12 +36,14 @@ function fetchUsage(sessionId: string): Promise<UsageResponse> {
 export function useHistoryRounds(sessionId: string | undefined): {
   status: UsageStatus
   rounds: ChartRound[]
+  compactions: CompactionRecord[]
   totals: TokenUsageBuckets | null
   error: string | null
   load: () => Promise<void>
 } {
   const [status, setStatus] = useState<UsageStatus>('idle')
   const [rounds, setRounds] = useState<ChartRound[]>([])
+  const [compactions, setCompactions] = useState<CompactionRecord[]>([])
   const [totals, setTotals] = useState<TokenUsageBuckets | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [nonce, setNonce] = useState(0)
@@ -52,10 +55,12 @@ export function useHistoryRounds(sessionId: string | undefined): {
       const body = await fetchUsage(sessionId)
       if (body.ok && body.rounds !== undefined) {
         setRounds(body.rounds)
+        setCompactions(body.compactions ?? [])
         setTotals(body.totals ?? null)
         setError(null)
         setStatus('ok')
       } else {
+        setCompactions([])
         setError(body.reason ?? 'unknown')
         setStatus('error')
       }
@@ -72,6 +77,7 @@ export function useHistoryRounds(sessionId: string | undefined): {
   return {
     status,
     rounds,
+    compactions,
     totals,
     error,
     load: () => { setNonce((n) => n + 1); return load() },

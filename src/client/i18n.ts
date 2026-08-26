@@ -108,6 +108,29 @@ export interface UiCopy {
   dismissBadge: string
   pressureBarTitle: (percent: number) => string
   pressureBarLabel: (percent: string) => string
+  // v1.1.0：上下文构成与压缩诊断
+  contextDiagnostics: string
+  contextBreakdownTitle: string
+  contextApproxNote: string
+  systemTokens: string
+  toolsTokens: string
+  messageTokens: string
+  compactionTitle: string
+  compactionCount: (count: number) => string
+  compactionFreed: (tokens: string) => string
+  compactionCost: (cost: string) => string
+  compactionEmpty: string
+  compactionRound: (turn: number | null) => string
+  compactionSavingsTotal: (freed: string, count: number) => string
+  contextSuggestionCaution: string
+  contextSuggestionCritical: string
+  userSourceLabel: string
+  userSources: {
+    human: string
+    agent: string
+    continuation: string
+    unknown: string
+  }
 }
 
 const COPY: Record<UiLocale, UiCopy> = {
@@ -156,6 +179,29 @@ const COPY: Record<UiLocale, UiCopy> = {
     dismissBadge: '关闭成本徽章',
     pressureBarTitle: (percent) => `上下文压力 ${percent}%`,
     pressureBarLabel: (percent) => `上下文 ${percent}`,
+    // v1.1.0：上下文构成与压缩诊断
+    contextDiagnostics: '上下文与压缩诊断',
+    contextBreakdownTitle: '上下文构成',
+    contextApproxNote: '基于官方 contextBreakdown 投影的启发式近似分桶',
+    systemTokens: '系统提示',
+    toolsTokens: '工具定义',
+    messageTokens: '历史消息',
+    compactionTitle: '上下文压缩',
+    compactionCount: (count) => `共 ${count} 次压缩`,
+    compactionFreed: (tokens) => `释放 ${tokens}`,
+    compactionCost: (cost) => `摘要耗费 ${cost}`,
+    compactionEmpty: '当前会话尚未发生上下文压缩。',
+    compactionRound: (turn) => turn !== null ? `第 ${turn} 轮` : '会话期间',
+    compactionSavingsTotal: (freed, count) => `累计 ${count} 次压缩，共释放 ${freed} 上下文空间`,
+    contextSuggestionCaution: '上下文占用较高（>75%），建议精简后续注入的大文本或工具输出。',
+    contextSuggestionCritical: '上下文已接近上限（>90%），建议适时开启新会话或触发上下文压缩。',
+    userSourceLabel: '来源',
+    userSources: {
+      human: '人工输入',
+      agent: 'Agent注入',
+      continuation: '目标续跑',
+      unknown: '未知来源',
+    },
   },
   en: {
     input: 'Input', output: 'Output', cache: 'Cache', cost: 'Cost', balance: 'Balance', usage: 'Usage',
@@ -202,6 +248,29 @@ const COPY: Record<UiLocale, UiCopy> = {
     dismissBadge: 'Dismiss cost badge',
     pressureBarTitle: (percent) => `Context pressure ${percent}%`,
     pressureBarLabel: (percent) => `Context ${percent}`,
+    // v1.1.0：上下文构成与压缩诊断
+    contextDiagnostics: 'Context & Compaction Diagnostics',
+    contextBreakdownTitle: 'Context Breakdown',
+    contextApproxNote: 'Heuristic token breakdown from official contextBreakdown projection',
+    systemTokens: 'System Prompt',
+    toolsTokens: 'Tools Schema',
+    messageTokens: 'Messages',
+    compactionTitle: 'Context Compaction',
+    compactionCount: (count) => `${count} compaction${count > 1 ? 's' : ''}`,
+    compactionFreed: (tokens) => `Freed ${tokens}`,
+    compactionCost: (cost) => `Summary cost: ${cost}`,
+    compactionEmpty: 'No context compaction has occurred in this session yet.',
+    compactionRound: (turn) => turn !== null ? `Round ${turn}` : 'In session',
+    compactionSavingsTotal: (freed, count) => `${count} compaction${count > 1 ? 's' : ''} in total, freed ${freed} tokens`,
+    contextSuggestionCaution: 'Context usage is moderately high (>75%). Mind large prompt attachments.',
+    contextSuggestionCritical: 'Context is near full capacity (>90%). Consider starting a new session or compacting.',
+    userSourceLabel: 'Source',
+    userSources: {
+      human: 'User',
+      agent: 'Agent injection',
+      continuation: 'Continuation',
+      unknown: 'Unknown',
+    },
   },
 }
 
