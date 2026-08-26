@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). 中文版见 [CHANGELOG_ZH.md](./CHANGELOG_ZH.md).
 
+## [1.1.2] - 2026-08-26
+
+### Improved & Fixed
+
+- **Compact 2-Column Hover Tooltip & Overflow Elimination**:
+  - **Height Reduction**: Redesigned `.duc-chart-tooltip` into a compact 2-column grid (2×2 token breakdown + 2-column metadata pairs), reducing card height from ~280px to ~120px (>55% reduction).
+  - **Top-Aligned Positioning**: Adjusted placement from `top: 20px` to `top: 2px` (240px width), ensuring the hover card stays strictly within the 132px chart boundary and never expands container scroll height or triggers popover scrollbars.
+
 ## [1.1.1] - 2026-08-26
 
 ### Improved & Fixed

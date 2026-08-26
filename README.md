@@ -76,7 +76,7 @@ To update (upgrade to a new version): pnpm may print `Already up to date` when a
 
 ```sh
 # Option ①: pin the target version explicitly
-dsh plugin --profile web add dsh-usage-chart@1.1.1
+dsh plugin --profile web add dsh-usage-chart@1.1.2
 # Option ②: remove, then re-add (back to latest)
 dsh plugin --profile web remove dsh-usage-chart
 dsh plugin --profile web add dsh-usage-chart
