@@ -44,8 +44,8 @@ const MIN_CHART_WIDTH = 480
 const MAX_VALUE_LABEL_CHARS = 5
 /** 成本视角值标签的最大字符数：成本数值（如 "¥0.0013"）偏长，放宽以便逐轮可见。 */
 const COST_LABEL_MAX_CHARS = 9
-/** 工具提示相对可见区边缘的最小留白（px，解释卡宽 212px 的一半 + 边距）。 */
-const TOOLTIP_MARGIN = 116
+/** 工具提示相对可见区边缘的最小留白（px，解释卡宽 240px 的一半 + 边距）。 */
+const TOOLTIP_MARGIN = 126
 /** 耗时叠加：柱顶偏移的最大像素（随总耗时归一化）。 */
 const DURATION_BAND = 11
 
@@ -352,17 +352,17 @@ export function RoundBars({
           </div>
           <div className="duc-chart-tooltip-meta">
             {mode !== 'cost' && activeRound.cost !== null && (
-              <span>{copy.costLabel}<b>{formatMoney(activeRound.cost[currency].total, currency)}{activeRound.cost.estimated ? ` ${copy.estimatedMark}` : ''}</b></span>
+              <span><em>{copy.costLabel}</em><b>{formatMoney(activeRound.cost[currency].total, currency)}{activeRound.cost.estimated ? ` ${copy.estimatedMark}` : ''}</b></span>
             )}
-            {activeRound.model !== null && <span>{copy.modelLabel}<b>{activeRound.model.replace(/^deepseek-/, '')}</b></span>}
-            <span>{copy.tierLabel}<b>{copy.tiers[tierAt(activeRound.startedAt ?? undefined)]}</b></span>
-            <span>{copy.duration}<b>{formatDuration(activeRound.durationMs)}</b></span>
-            <span>{copy.ttft}<b>{formatDuration(activeRound.ttftMs)}</b></span>
-            {activeRound.outputTps !== null && <span>{copy.outputTps}<b>{Math.round(activeRound.outputTps)} t/s</b></span>}
-            {cacheHitPercent(activeRound.buckets) !== null && <span>{copy.cacheHit}<b>{cacheHitPercent(activeRound.buckets)}%</b></span>}
+            {activeRound.model !== null && <span><em>{copy.modelLabel}</em><b>{activeRound.model.replace(/^deepseek-/, '')}</b></span>}
+            <span><em>{copy.tierLabel}</em><b>{copy.tiers[tierAt(activeRound.startedAt ?? undefined)]}</b></span>
+            <span><em>{copy.duration}</em><b>{formatDuration(activeRound.durationMs)}</b></span>
+            <span><em>{copy.ttft}</em><b>{formatDuration(activeRound.ttftMs)}</b></span>
+            {activeRound.outputTps !== null && <span><em>{copy.outputTps}</em><b>{Math.round(activeRound.outputTps)} t/s</b></span>}
+            {cacheHitPercent(activeRound.buckets) !== null && <span><em>{copy.cacheHit}</em><b>{cacheHitPercent(activeRound.buckets)}%</b></span>}
             {activeRound.userSource !== undefined && activeRound.userSource !== null && (
               <span>
-                {copy.userSourceLabel}
+                <em>{copy.userSourceLabel}</em>
                 <b>
                   {copy.userSources[
                     activeRound.userSource.toLowerCase().includes('agent')
@@ -374,7 +374,7 @@ export function RoundBars({
                 </b>
               </span>
             )}
-            {activeRound.endReason !== null && <span>{copy.endReason}<b>{copy.endReasonLabel(activeRound.endReason)}</b></span>}
+            {activeRound.endReason !== null && <span><em>{copy.endReason}</em><b>{copy.endReasonLabel(activeRound.endReason)}</b></span>}
           </div>
           {(() => {
             const flag = flagByTurn.get(activeRound.turn)

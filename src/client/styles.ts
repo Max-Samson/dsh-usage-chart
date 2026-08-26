@@ -287,18 +287,30 @@ body[data-ds-dark-theme] .duc-popover { box-shadow: 0 16px 40px rgba(0, 0, 0, 0.
 .duc-chart-hit-tick { opacity: 0.85; }
 
 /* v0.2：解释卡 Tooltip（加宽 + 元信息行 + 异常 chip） */
-.duc-chart-tooltip-wide { width: 212px; }
+.duc-chart-tooltip-wide { width: 240px; }
 .duc-chart-tooltip-meta {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 2px 10px;
-  margin-top: 6px;
-  padding-top: 5px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 8px;
+  margin-top: 4px;
+  padding-top: 3px;
   border-top: 1px solid var(--dsw-alias-border-l3, rgba(127, 127, 127, 0.2));
-  color: var(--dsw-alias-label-secondary, #5f6368);
-  font-size: 9.5px;
+  font-size: 9px;
 }
-.duc-chart-tooltip-meta span { display: contents; }
+.duc-chart-tooltip-meta span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px;
+  overflow: hidden;
+}
+.duc-chart-tooltip-meta em {
+  color: var(--dsw-alias-label-secondary, #5f6368);
+  font-style: normal;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .duc-chart-tooltip-meta b {
   overflow: hidden;
   color: var(--dsw-alias-label-primary, #202124);
@@ -307,13 +319,14 @@ body[data-ds-dark-theme] .duc-popover { box-shadow: 0 16px 40px rgba(0, 0, 0, 0.
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.duc-chart-tooltip-flags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--dsw-alias-border-l3, rgba(127, 127, 127, 0.2)); }
+.duc-chart-tooltip-flags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; padding-top: 3px; border-top: 1px solid var(--dsw-alias-border-l3, rgba(127, 127, 127, 0.2)); }
 .duc-flag-chip {
-  padding: 1px 5px;
-  border-radius: 8px;
+  padding: 0 4px;
+  border-radius: 4px;
   background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.14));
   color: var(--dsw-alias-label-secondary, #5f6368);
-  font-size: 9px;
+  font-size: 8.5px;
+  line-height: 14px;
   font-weight: 600;
 }
 .duc-flag-chip:first-child { background: color-mix(in srgb, var(--duc-anomaly) 16%, transparent); color: var(--duc-anomaly); }
@@ -381,29 +394,28 @@ body[data-ds-dark-theme] .duc-popover { box-shadow: 0 16px 40px rgba(0, 0, 0, 0.
 .duc-chart-tooltip {
   position: absolute;
   z-index: 2;
-  top: 20px;
-  width: 186px;
-  padding: 8px 9px;
+  top: 2px;
+  width: 200px;
+  padding: 5px 7px;
   transform: translateX(-50%);
   box-sizing: border-box;
   border: 1px solid var(--dsw-alias-border-l3, rgba(127, 127, 127, 0.32));
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--dsw-alias-bg-layer-3, var(--dsw-alias-bg-layer-2, #fff));
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.16);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.16);
   color: var(--dsw-alias-label-primary, #202124);
   pointer-events: none;
 }
-body[data-ds-dark-theme] .duc-chart-tooltip { box-shadow: 0 10px 24px rgba(0, 0, 0, 0.36); }
-.duc-chart-tooltip-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding-bottom: 5px; border-bottom: 1px solid var(--dsw-alias-border-l3, rgba(127, 127, 127, 0.2)); }
-.duc-chart-tooltip-head strong { font-size: 11px; font-weight: 600; }
-.duc-chart-tooltip-head b { font-size: 12px; font-weight: 700; }
-.duc-chart-tooltip-grid { display: grid; gap: 3px; padding-top: 5px; }
-.duc-chart-tooltip-grid span { display: grid; grid-template-columns: 7px minmax(0, 1fr) auto 26px; align-items: center; gap: 5px; min-width: 0; }
-.duc-chart-tooltip-grid i { width: 7px; height: 7px; border-radius: 2px; }
-.duc-chart-tooltip-grid em { overflow: hidden; color: var(--dsw-alias-label-secondary, #5f6368); font-size: 9.5px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
-.duc-chart-tooltip-grid b { font-size: 9.5px; font-weight: 600; }
-.duc-chart-tooltip-grid small { color: var(--dsw-alias-label-tertiary, #80868b); font-size: 9px; text-align: right; }
-
+body[data-ds-dark-theme] .duc-chart-tooltip { box-shadow: 0 8px 22px rgba(0, 0, 0, 0.36); }
+.duc-chart-tooltip-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding-bottom: 3px; border-bottom: 1px solid var(--dsw-alias-border-l3, rgba(127, 127, 127, 0.2)); }
+.duc-chart-tooltip-head strong { font-size: 10.5px; font-weight: 600; }
+.duc-chart-tooltip-head b { font-size: 11.5px; font-weight: 700; }
+.duc-chart-tooltip-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 6px; padding-top: 3px; }
+.duc-chart-tooltip-grid span { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto; align-items: center; gap: 3px; min-width: 0; }
+.duc-chart-tooltip-grid i { width: 6px; height: 6px; border-radius: 1.5px; }
+.duc-chart-tooltip-grid em { overflow: hidden; color: var(--dsw-alias-label-secondary, #5f6368); font-size: 8.5px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.duc-chart-tooltip-grid b { font-size: 8.5px; font-weight: 600; }
+.duc-chart-tooltip-grid small { display: none; }
 .duc-chart-actions { display: flex; align-items: center; gap: 7px; }
 .duc-chart-explainer {
   display: flex;
