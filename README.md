@@ -1,168 +1,150 @@
 # dsh-usage-chart
 
-> DeepSeek 用量 / 成本 / 余额仪表盘 · DSH Web 插件
+> A usage, cost, and account-balance dashboard for DeepSeek Harness Web.
 
 [![npm version](https://img.shields.io/npm/v/dsh-usage-chart)](https://www.npmjs.com/package/dsh-usage-chart)
 [![CI](https://img.shields.io/github/actions/workflow/status/Max-Samson/dsh-usage-chart/ci.yml?branch=main)](https://github.com/Max-Samson/dsh-usage-chart/actions)
 [![License](https://img.shields.io/github/license/Max-Samson/dsh-usage-chart)](./LICENSE)
 
-[English](./README_EN.md) · [问题反馈](https://github.com/Max-Samson/dsh-usage-chart/issues) · [更新日志（中文）](./CHANGELOG_ZH.md) · [Changelog (EN)](./CHANGELOG.md)
+[简体中文](./README_ZH.md) · [Report an issue](https://github.com/Max-Samson/dsh-usage-chart/issues) · [Changelog (EN)](./CHANGELOG.md) · [更新日志（中文）](./CHANGELOG_ZH.md)
 
-界面预览：左侧为浅色英文界面，右侧为深色简体中文界面。两者均会跟随 DSH 的主题与语言设置。
+Interface preview: light English on the left and dark Simplified Chinese on the right. Both variants follow the DSH theme and in-app language setting.
 
 <table>
   <tr>
-    <td width="50%"><img src="./docs/images/usage-panel-demo-en-lightv1.0.0.png" alt="浅色主题的英文用量面板演示" /><br /><sub>浅色主题 · English</sub></td>
-    <td width="50%"><img src="./docs/images/usage-panel-demo-zh-darkv1.0.0.png" alt="深色主题的简体中文用量面板演示" /><br /><sub>深色主题 · 简体中文</sub></td>
+    <td width="50%"><img src="./docs/images/usage-panel-demo-en-lightv1.0.0.png" alt="Light-theme English usage-panel demo" /><br /><sub>Light theme · English</sub></td>
+    <td width="50%"><img src="./docs/images/usage-panel-demo-zh-darkv1.0.0.png" alt="Dark-theme Simplified Chinese usage-panel demo" /><br /><sub>Dark theme · 简体中文</sub></td>
   </tr>
 </table>
 
-> 图片仅使用虚构演示数据：不含真实会话内容、Token、成本、余额或 API Key。
+> Both screenshots use fictional demo data only. They contain no real session content, token counts, costs, balances, or API keys.
 
-在 DeepSeek Harness Web UI 的**输入框下方**实时显示 token 用量、成本估算、模型与账户余额；点击展开**用量可视化图表面板**（参考 DeepSeek 开发者平台的用量页组织方式），全部使用零依赖 SVG 自绘，不引入任何图表库。成本按官方刊例价（**CNY / USD 双币种，区分高峰/空闲时段**）估算，支持 **USD / CNY 多币种显示**（v0.3 / v1.0.1）。
+The plugin adds a compact indicator below the conversation composer. It shows input/output tokens, cache-hit ratio, estimated cost, active model, a multi-segment context-pressure bar (system/tools/messages breakdown, v1.1.0), and DeepSeek account balance. Click it to open a zero-dependency SVG dashboard with per-turn usage history — including a cost view (every bar shows its own cost value, not just the current round), a duration overlay, anomaly markers, an explainer tooltip (tokens + cost + model + billing tier + duration/TTFT/TPS + **user input source attribution: human/agent/continuation**, v1.1.0 + end reason), horizontally scrollable per-round bars (all rounds, fixed slim bar width, auto-scroll to latest), a dedicated **Context & Compaction Diagnostics section** (system/tools/messages token composition, compaction timeline, freed tokens, summarize cost, context occupancy suggestions, v1.1.0), a dismissible `≈ ¥/$0.00xx` badge on each assistant message, peak/off-peak tiered billing with a live red/green billing-tier tag in the panel (red = peak, green = off-peak, v1.0.1), and official dual-currency pricing (CNY from the Chinese pricing page, USD from the English pricing page — no FX conversion, v1.0.1).
 
 ```
-▸ 输入 12.4M · 输出 86.2K · 缓存 72% · 成本 ≈¥0.284 / ≈$0.042 · demo-model · 余额 --
+▸ Input 12.4M · Output 86.2K · Hit 72% · Cost ≈$0.042 / ≈¥0.284 · demo-model · Balance --
 ```
 
-点击 ▸ 展开面板：
+Click ▸ to open the dashboard panel:
 
-- **会话用量汇总** — 输入（未命中/命中）、输出、缓存命中率、上下文占用（均来自官方 adapter 上报的 `tokenUsage` / `contextPressure` 投影）
-- **成本估算** — 按官方刊例价（CNY/USD 双币种 /1M tokens，高峰/空闲双时段）估算并标注来源与核验日期；支持用户覆盖 `pricing.json`；未定价模型显式标记「未定价模型」
-- **高峰/空闲时段计费（v1.0.1）** — 官方高峰时段（北京时间周一至周五 09:00–12:00、14:00–18:00，即 UTC 01:00–04:00、06:00–10:00）价格为空闲时段的 2 倍；其余时段及周末全天为空闲时段；每轮成本按轮次开始时刻自动选用对应时段单价（时刻缺失按高峰保守估算）；面板顶部以**红/绿 tag 实时标注当前计费时段**（红=高峰、绿=空闲），每轮解释卡也显示该轮计费时段
-- **双币种官方刊例价（v1.0.1）** — 中文定价页（CNY）与英文定价页（USD）的官方报价同时内置：CNY 显示用人民币报价、USD 显示用美元报价，**不做汇率换算**（与官方账单口径一致）；「刷新汇率」仅更新「1 USD ≈ X CNY」参考注记
-- **多币种成本（v0.3 / v1.0.1）** — 成本区 CNY/USD 一键切换（选择在浏览器记住），指示器、面板、图表与成本徽章全部跟随所选币种
-- **轮次用量** — 支持“总量 / 构成 / **成本**”三视角；**成本视角每根柱显示对应费用数值**（逐轮可见，不只在当前轮）；柱顶叠加**总耗时点线**；成本突增轮次加**异常标记**（归因 chip：输出增长 / 上下文膨胀 / 缓存命中下降）；柱底缓存命中迷你刻度；悬浮**解释卡**（token 分桶 + 成本 + 模型 + 计费时段 + 耗时/TTFT/TPS + 结束原因）；**全部轮次**横向滚动查看（固定细柱宽 + 自动滚到最新 + 箭头/渐隐提示），从宿主会话日志折叠完整历史，不可用时回退到本页观测增量（同样按快照估算逐轮成本）
-- **成本徽章** — 每条助手消息尾部显示可关闭的「本轮 ≈ ¥0.00xx / $0.00xx」徽章（跟随所选币种）
-- **上下文压力条** — 指示器行内的细压力条（`contextPressure / contextWindow`），随占用升高由绿转红
-- **账户余额** — 官方 `GET /user/balance` 接口实时查询（经宿主侧代理，密钥不暴露给浏览器）
-- **中英双语** — 自动跟随 DSH 应用内语言设置，支持运行时切换 `zh` / `en`
+- **Session usage summary** — Input (uncached/cached), output, cache-hit percentage, and context occupancy (derived from official adapter `tokenUsage` / `contextPressure` projections).
+- **Context breakdown & compaction diagnostics (v1.1.0)** — Official `contextBreakdown` projection breakdown (System prompt / Tools schema / Message history token counts and percentage with a 3-segment color bar, annotated as heuristic approximations); Host folds `compaction/*` events (which round was compacted, how many tokens were freed, model used, and summarize call cost); provides proactive suggestions (≥75% / ≥90% occupancy) to start a new session or reduce large file injections.
+- **Cost estimation** — Estimated from official list prices (CNY/USD dual-currency per 1M tokens, peak/off-peak tiers) with verified source date; supports user override via `pricing.json`; unpriced models are explicitly tagged.
+- **Peak / off-peak tiered billing (v1.0.1)** — Peak hours (Beijing time Monday–Friday 09:00–12:00 and 14:00–18:00, UTC 01:00–04:00 and 06:00–10:00) billed at 2× the off-peak rate; all other hours and weekends billed at off-peak rates; rounds bill automatically based on start time (or conservative peak if unknown); live red/green tag in the panel header.
+- **Official dual-currency list pricing (v1.0.1)** — Builtin official CNY and USD prices directly used according to the active display currency — **no FX conversion applied to costs** (matching official billing); "Refresh rate" updates only the informational "1 USD ≈ X CNY" reference note.
+- **Multi-currency display (v0.3 / v1.0.1)** — One-click toggle between USD and CNY (persisted in localStorage); indicator, panel, chart, and badges all follow.
+- **Per-round usage & source attribution (v1.1.0)** — "Total / Composition / **Cost**" view modes; cost mode shows each bar's monetary amount; duration line overlay; anomaly marker chips on cost spikes; cache hit miniature ticks; hover explainer card with full round metrics + **user input source attribution: human/agent/continuation**; horizontal scroll for full session history.
+- **Cost badge** — Dismissible `≈ ¥/$0.00xx` badge rendered at the bottom of each assistant message.
+- **Multi-segment context pressure bar (v1.1.0)** — Slim bar in the composer dock indicating total context occupancy from green to red, segmented by System (blue), Tools (amber), and Messages (green) with hover percentages.
+- **Account balance** — Real-time balance queried via official DeepSeek API (proxied securely through Host, API key never exposed to browser).
+- **Bilingual (ZH / EN)** — Automatically follows DSH in-app language setting, with runtime switching between `zh` and `en`.
 
-## 特性
+## Data sources
 
-| 数据 | 来源 | 准确性 |
+| Metric | Source | Accuracy |
 |---|---|---|
-| token 用量 | DSH 官方 adapter 上报的会话投影（`tokenUsage` / `contextPressure`） | ✅ 官方真实数据，实时更新 |
-| 成本 | 官方刊例价（内置表 + 可选用户覆盖 `pricing.json`，CNY/USD 双币种 /1M tokens，高峰/空闲双时段）× adapter 上报用量 | ⚠️ 估算值，非官方账单；价格经宿主 `/pricing` 单点解析 |
-| 成本币种 | 宿主 `/meta` 下发配置；成本按所选币种的官方刊例价直接计算（不做汇率换算） | ✅ 官方双币种刊例价 |
-| 轮次明细 | 宿主会话日志折叠（`/usage`）：耗时 / TTFT / TPS / 模型归因 / 结束原因 / 每轮成本 | ✅ 官方事件流折叠 |
-| 余额 | 官方 `GET https://api.deepseek.com/user/balance` | ✅ 官方实时数据 |
-| 模型名 | adapter 上报的请求 provenance / `request/context` | ✅ 官方真实数据 |
+| Token usage | DSH official adapter session projections (`tokenUsage` / `contextPressure`) | ✅ Official real-time data |
+| Cost | Official list price (builtin + optional `pricing.json` override, CNY/USD dual-currency / 1M tokens, peak/off-peak tiers) × reported usage | ⚠️ Estimate, not invoice; resolved via Host `/pricing` snapshot |
+| Display currency | Host `/meta` config; costs directly calculated in selected currency list price | ✅ Official dual-currency list price |
+| Per-round history | Host session log fold (`/usage`): duration / TTFT / TPS / model attribution / **input source attribution** / end reason / per-round cost | ✅ Official event stream fold |
+| Context & compaction | Official `contextBreakdown` / `contextPressure` projections + Host `compaction/*` event fold | ✅ Official projections + event fold |
+| Balance | Official `GET https://api.deepseek.com/user/balance` | ✅ Official real-time data |
+| Model name | Adapter request provenance / `request/context` | ✅ Official real-time data |
 
-## 技术栈
+## Tech stack
 
-- **语言**：TypeScript 源码，发布为 DSH 可加载的 JavaScript bundle
-- **框架**：[Cordis](https://github.com/cordiverse/cordis) 插件模型 + React 18
-- **构建**：esbuild（host 半区 = Node ESM；client 半区 = `window.__ModuleLoader__.load({id, factory})` 工厂包，外部依赖与 DSH web 的 `PLATFORM_MODULES` 完全一致）
-- **可视化**：零依赖手写 SVG（DSH web 未内置图表库；自绘与平台渲染方式一致、体积最小、最稳定）
+- **Language**: TypeScript source, compiled to DSH loadable JavaScript bundles
+- **Framework**: [Cordis](https://github.com/cordiverse/cordis) plugin model + React 18
+- **Build**: esbuild (Host half = Node ESM; Client half = browser factory bundle matching DSH Web `PLATFORM_MODULES`)
+- **Visualization**: Zero-dependency handcrafted SVG (matches platform rendering, minimal footprint, ultra-stable)
 
-## 安装
+## Install
 
-前置要求：**[DSH](https://github.com/deepseek-ai/deepseek-harness) ≥ 0.1.0-rc.6** · **Node.js ≥ 20** · PATH 上有 **[pnpm](https://pnpm.io/install)**（`dsh plugin` 会把安装命令转发给 pnpm）。
+Prerequisites: **[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) ≥ 0.1.0-rc.6** · **Node.js ≥ 20** · **[pnpm](https://pnpm.io/install) on PATH** (`dsh plugin` forwards installs to pnpm).
 
-> 若提示 `dsh: command not found`（或 PowerShell `无法将“dsh”项识别为…`），说明只通过
-> `npx @deepseek-ai/dsh` 临时运行过、未安装全局命令——按 [FAQ](#常见问题faq) 第一条解决
-> （全局安装后重开终端，或每条 `dsh ...` 前加 `npx --yes @deepseek-ai/dsh`）。
+> If you get `dsh: command not found` (or PowerShell `The term 'dsh' is not recognized…`),
+> you ran `npx @deepseek-ai/dsh` transiently — see FAQ item 1 (install globally, or prefix commands with `npx --yes @deepseek-ai/dsh`).
 
-### 方式一：npm 仓库安装（推荐，预构建产物，无需构建工具）
+### Option 1: npm registry (recommended, prebuilt — no build tooling needed)
 
 ```sh
-dsh plugin --profile web add dsh-usage-chart   # 安装并自动登记为 profile 插件层
-dsh web --profile web                          # 启动 DSH Web（已在运行时先停止再启动）
+dsh plugin --profile web add dsh-usage-chart   # installs and registers the profile plugin layer
+dsh web --profile web                          # starts DSH Web (stop it first if already running)
 ```
 
-更新（升级到新版本）：pnpm 对已安装的依赖重新 `add` 可能显示 `Already up to date`
-而不升级，请用**显式版本**（推荐）或**先卸载再安装**：
+To update (upgrade to a new version): pnpm may print `Already up to date` when already installed — use an **explicit version** (recommended) or **remove then re-add**:
 
 ```sh
-# 方式①：显式指定目标版本
-dsh plugin --profile web add dsh-usage-chart@0.3.0
-# 方式②：先移除再重装（回到最新版）
+# Option ①: pin the target version explicitly
+dsh plugin --profile web add dsh-usage-chart@1.1.0
+# Option ②: remove, then re-add (back to latest)
 dsh plugin --profile web remove dsh-usage-chart
 dsh plugin --profile web add dsh-usage-chart
 ```
 
-完成后重启 DSH Web。
+Then restart DSH Web.
 
-> ⚠️ **升级后必须重启 `dsh web` 进程**：宿主在启动时缓存插件代码（无热重载），
-> 新路由（如 `/pricing`、`/meta`、`/rate`）只有重启后才生效。详见 [更新日志](./CHANGELOG_ZH.md)。
+> ⚠️ **Restarting the `dsh web` process is required after any upgrade.** The Host caches plugin code in memory (no hot reload): new routes (e.g. `/pricing`, `/meta`, `/rate`) are only served after a restart. See the [Changelog](./CHANGELOG.md).
 
-> ⚠️ **未全局安装 dsh（报 `dsh: command not found` / PowerShell `无法将“dsh”项识别为…`）？
-> 把上面每条 `dsh` 都写成 `npx --yes @deepseek-ai/dsh`**，例如
-> `npx --yes @deepseek-ai/dsh plugin --profile web add dsh-usage-chart@0.3.0`
-> （原因与解法见 [FAQ](#常见问题faq) 第一条）。
-
-### 方式二：从 GitHub 安装（源码构建）
+### Option 2: install from GitHub (source build)
 
 ```sh
 dsh plugin --profile web add github:Max-Samson/dsh-usage-chart#<commit-sha>
 ```
 
-Git 安装会执行包的 `prepare` 脚本（`node build.mjs`）从源码构建。pnpm ≥ 10 首次会拒绝运行
-`prepare`，需要在 profile 的 `pnpm-workspace.yaml` 中放行：
+Git installs run the package `prepare` script (`node build.mjs`) to build from source. pnpm ≥ 10 blocks `prepare` scripts by default — allow this package in the profile's `pnpm-workspace.yaml`, then re-run:
 
 ```yaml
 allowBuilds:
   dsh-usage-chart: true
 ```
 
-> 放行意味着允许该包源码在安装时于本机执行，请只对可信来源这么做，并固定 commit
-> （`github:Max-Samson/dsh-usage-chart#<sha>`）。
-
-### 方式三：本地目录安装（开发自测）
+### Option 3: local directory (development)
 
 ```sh
 git clone https://github.com/Max-Samson/dsh-usage-chart.git
 cd dsh-usage-chart
 npm ci && npm run build
-dsh plugin --profile web add "$PWD"   # 以链接方式安装当前目录
+dsh plugin --profile web add "$PWD"   # links the current checkout
 dsh web --profile web
 ```
 
-### 验证安装
+### Verify the install
 
-1. 组合配置中应出现插件行：
+1. The composed profile should contain the plugin row:
 
    ```sh
    dsh --profile web --dump-config | grep -A4 'id: dsh-usage-chart'
    ```
 
-2. 打开 DSH Web，进入任意已有会话：输入框下方应出现「用量」指示器（含 token/成本/模型），
-   右侧为余额；点击 ▸ 展开可视化面板。未配置 API Key 时余额显示 `–`，面板内会提示配置方式。
+2. Open DSH Web and enter any existing session: the "Usage" indicator (tokens / cost / model) appears below the composer, with the account balance on the right; click ▸ to open the dashboard.
 
-### 配置余额查询
+### Balance query configuration
 
-余额查询需要 DeepSeek API Key，按以下优先级解析（每次请求实时解析，改后无需重启）：
+The balance query needs a DeepSeek API key, resolved per request in this order (no restart needed):
 
-1. **DSH 网页端配置（推荐，需插件 ≥ 0.1.1）**：在 DSH Web 的「设置 → 模型」中配置
-   DeepSeek API Key。插件经 DSH 凭据服务读取同一密钥（`.credentials.yaml` 用户层），
-   无需额外操作；
-2. **环境变量**：启动 `dsh web` 前导出 `DEEPSEEK_API_KEY=sk-...`（凭据服务的 env 层，同样生效）；
-3. **插件配置**：在 profile 的 `cordis.patch.yml` 中覆盖（Key 会以明文落盘，仅建议用于受保护的本机 profile）：
+1. **DSH Web settings (recommended, requires plugin ≥ 0.1.1)**: configure the DeepSeek API key under Settings → Models. The plugin reads the same key through the DSH credentials service (`.credentials.yaml` user layer); no extra setup is required.
+2. **Environment variable**: `DEEPSEEK_API_KEY=sk-...` before starting `dsh web` (the credentials service's `env` layer resolves it the same way).
+3. **Plugin config**: override `config.apiKey` in the profile's `cordis.patch.yml` (stored in plain text on disk — only recommended for a protected local profile):
 
 ```yaml
 - insert:
     - id: dsh-usage-chart
       name: dsh-usage-chart
       config:
-        apiKey: 'sk-...'        # 留空则回退到网页端/环境变量
+        apiKey: 'sk-...'        # empty falls back to web settings / env variable
         baseUrl: 'https://api.deepseek.com'
-        # pricingFile: '/path/to/pricing.json'   # 可选：价格覆盖文件（默认 $DSH_HOME/data/dsh-usage-chart/pricing.json）
-        # currency: 'cny'        # 可选（v0.3）：成本显示币种 'usd'（默认）| 'cny'
-        # cnyPerUsd: 6.76        # 可选（v0.3）：cny 时使用的汇率（默认 6.76，可经界面「刷新汇率」实时更新）
-        # fxUrl: 'https://open.er-api.com/v6/latest/USD'   # 可选（v0.3）：自定义实时汇率源
+        # pricingFile: '/path/to/pricing.json'   # optional: price override file
+        # currency: 'cny'        # optional (v0.3): 'usd' (default) | 'cny'
+        # cnyPerUsd: 6.76        # optional (v0.3): FX rate for note display
+        # fxUrl: 'https://open.er-api.com/v6/latest/USD'   # optional (v0.3): custom live rate source
 ```
 
-> 插件版本 < 0.1.1 时不读取网页端密钥：请用环境变量或上面的 `config.apiKey` 配置。
+The key stays in the Host process and is never sent to the browser.
 
-未配置 Key 时，指示器显示 `余额 –`，点击可重试；面板内会提示如何配置。
+### Price overrides (optional, v0.2+ / v1.0.1 dual-currency, tiered)
 
-### 价格覆盖（可选，v0.2+ / v1.0.1 双币种双时段）
-
-成本按「用户覆盖 > 内置刊例价 > 回退估算」解析（价格只在宿主解析，client 经
-`/dsh-usage-chart/pricing` 快照消费，单一价格真相）。默认覆盖文件
-`$DSH_HOME/data/dsh-usage-chart/pricing.json`（无 `DSH_HOME` 时 `~/.dsh/...`），
-支持两种形状，文件变更即时生效：
+Costs are resolved with priority **user override file > builtin list price > fallback estimate** (prices are resolved only on the Host; the client consumes the `/dsh-usage-chart/pricing` snapshot — a single source of truth, ADR 2). The default override file is `$DSH_HOME/data/dsh-usage-chart/pricing.json` (or `~/.dsh/...` without `DSH_HOME`); both flat and `{ "models": { … } }` shapes are accepted and changes are picked up live:
 
 ```json
 {
@@ -180,164 +162,134 @@ dsh web --profile web
 }
 ```
 
-或 `{ "models": { "<model>": { … } } }`。单价为 **双币种（CNY + USD）/ 1M tokens**：
-`peak` 为高峰时段（北京时间周一至周五 09:00–12:00、14:00–18:00，即 UTC 01:00–04:00、06:00–10:00），
-`offPeak` 为空闲时段（其余时间及周末全天）。兼容旧格式：平铺
-`{ "cacheMissInput": …, "cacheHitInput": …, "output": … }` 视为高峰/空闲同价、
-人民币报价（美元按默认汇率 6.76 折算）。`verifiedAt`（epoch 毫秒）可选，用于面板
-展示核验日期；未收录的模型会在 UI 中显式标记「未定价模型」，不会静默按 0 计。
+Unit prices are **dual-currency (CNY + USD) per 1M tokens**: `peak` covers peak hours (Beijing time Monday–Friday 09:00–12:00 and 14:00–18:00, charged at 2×), `offPeak` covers the rest (including weekends). Unpriced models are explicitly marked "Unpriced model" in the UI.
 
-### 币种与汇率（v0.3+ / v1.0.1 官方双币种）
+### Display currency and live FX rate (v0.3+ / v1.0.1 official dual-currency)
 
-成本按**所选币种的官方刊例价**直接计算（中文定价页 CNY 报价 / 英文定价页 USD 报价，
-**不做汇率换算**，与官方账单口径一致），面板成本区可一键切换 **CNY/USD**（选择在
-浏览器记住），指示器、面板、图表与成本徽章全部跟随。`config.cnyPerUsd`（默认 6.76）
-与「刷新汇率」按钮（经宿主 `/dsh-usage-chart/rate` 代理）仅用于「1 USD ≈ X CNY」
-参考注记：
+Costs are computed with the **official list price of the selected currency** (CNY quote from the Chinese pricing page, USD quote from the English pricing page — **no FX conversion**, consistent with the official bill). The cost section has a one-click **CNY/USD** toggle (remembered in the browser); the indicator, panel, chart and badge all follow it. `config.cnyPerUsd` (default 6.76) and the "Refresh rate" button (via Host `/dsh-usage-chart/rate` proxy) are used only for the informational "1 USD ≈ X CNY" note:
 
-- **多源回退**：自定义源（`config.fxUrl`）不可达时自动回退内置备用源（frankfurter.dev）；
-- **离线健壮性**：上次成功汇率持久化，断网刷新沿用上次真实汇率而非写死默认值；
-- **配置下发**：宿主 `/dsh-usage-chart/meta` 向 client 下发币种与汇率配置，价格注记跟随
-  显示币种并标注所用汇率。
+- **Multi-source fallback**: when the custom source (`config.fxUrl`) is unreachable, a built-in fallback source (frankfurter.dev) is tried;
+- **Offline resilience**: the last successful rate is persisted, so a refresh while offline keeps the last real rate instead of the fixed default;
+- **Config distribution**: the Host `/dsh-usage-chart/meta` route sends the display currency and rate config to the client.
 
-### 卸载
-
-> ⚠️ **未全局安装 dsh（报 `dsh: command not found` / PowerShell `无法将“dsh”项识别为…`）？
-> 把下面每条 `dsh` 都写成 `npx --yes @deepseek-ai/dsh`**，例如
-> `npx --yes @deepseek-ai/dsh plugin --profile web remove dsh-usage-chart`
-> （原因与解法见 [FAQ](#常见问题faq) 第一条）。
+### Uninstall
 
 ```sh
-dsh plugin --profile web remove dsh-usage-chart   # 移除依赖并自动从 profile 插件层注销
-dsh web --profile web                             # 重启后指示器/面板消失
+dsh plugin --profile web remove dsh-usage-chart   # removes the dependency and de-registers the layer
+dsh web --profile web                             # restart; indicator and panel disappear
 ```
 
-`remove` 会同时清理 `node_modules` 中的包并把它从 `dsh.profile.bundles` 移除（无残留）。
-彻底清理（按需）：
+`remove` also cleans the package out of `node_modules` and `dsh.profile.bundles` (no leftovers).
 
-- 若曾在 profile 的 `cordis.patch.yml` 中写过 `config.apiKey`/`baseUrl` 覆盖块，删除该段；
-- 若为 GitHub 安装加过 `allowBuilds`，可移除 `pnpm-workspace.yaml` 中对应的 `dsh-usage-chart` 条目；
-- 网页端配置的 DeepSeek API Key 存于 DSH 凭据文件（`~/.dsh/.credentials.yaml`），
-  **不要删除**——DSH 自身的模型服务仍在使用该密钥；只有确定不再使用 DSH 的 DeepSeek 服务时才考虑移除。
+## FAQ
 
-## 常见问题（FAQ）
+**Q: `dsh` is not found (`command not found` / PowerShell `The term 'dsh' is not recognized`)?**
+A: `npx @deepseek-ai/dsh` runs transiently and installs no global command. Run `npm install -g @deepseek-ai/dsh` and open a new terminal, or prefix commands with `npx --yes @deepseek-ai/dsh ...`. Missing pnpm is the same: `npm install -g pnpm`.
 
-**Q：`dsh` 命令找不到（`command not found` / PowerShell `无法将“dsh”项识别为…`）？**
-A：`npx @deepseek-ai/dsh` 是临时运行、不产生全局命令。请 `npm install -g @deepseek-ai/dsh`
-并重开终端（Windows 还需确保 `npm config get prefix` 目录在 PATH）；或把每条 `dsh ...`
-换成 `npx --yes @deepseek-ai/dsh ...`。pnpm 缺失同理：`npm install -g pnpm`。
+**Q: Install shows `WARN missing peer react@^18.2.0`?**
+A: Harmless — react is provided by the DSH Web platform in the browser; the profile does not need it. Plugin ≥ 0.1.1 marks react as an optional peer.
 
-**Q：安装时提示 `WARN missing peer react@^18.2.0`？**
-A：正常且无害——react 由 DSH Web 平台在浏览器端内置，profile 无需安装。插件 ≥ 0.1.1
-已把 react 标记为可选 peer，不再报警；0.1.0 的该警告可忽略。
+**Q: The balance still shows `–` / "not configured" after setting the API key in the web UI?**
+A: Make sure the plugin is ≥ 0.1.1, then restart `dsh web`. As a stopgap, set `DEEPSEEK_API_KEY` or `config.apiKey`.
 
-**Q：网页端配了 API Key，余额仍显示 `–` 或「未配置」？**
-A：请确认插件版本 ≥ 0.1.1（0.1.1 起余额查询才走 DSH 凭据服务读取网页端密钥）；
-升级后重启 `dsh web`。临时方案：先设环境变量 `DEEPSEEK_API_KEY` 或 `config.apiKey`。
+**Q: `add` reports `dsh-usage-chart is not in the npm registry`?**
+A: Use "Option 3: local directory" to test, or wait for the maintainer to publish.
 
-**Q：`add` 时报 `dsh-usage-chart is not in the npm registry`？**
-A：包尚未发布到 npm。请用「方式三：本地目录安装」测试，或等待维护者发布后重试。
-
-## 参与开发
+## Development
 
 ```sh
 git clone https://github.com/Max-Samson/dsh-usage-chart.git
 cd dsh-usage-chart
 npm ci
 npm run verify       # typecheck + build + node:test
-npm pack --dry-run   # 检查最终发布内容
+npm pack --dry-run   # check package tarball
 ```
 
-本地自测安装见上文「方式三」；贡献前请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)，
-安全问题请按 [SECURITY.md](./SECURITY.md) 私下报告。
+### Visual probe scripts (optional)
 
-### 可视化验证脚本（可选）
+`scripts/` provides playwright-core based probes targeting a running DSH Web instance (`http://127.0.0.1:3080` by default):
 
-`scripts/` 下有基于 playwright-core 的探测脚本，针对**已运行**的 DSH Web（默认
-`http://127.0.0.1:3080`，需要本机 Chrome/Chromium），通过环境变量与你的环境解耦：
-
-| 环境变量 | 默认 | 说明 |
+| Variable | Default | Purpose |
 |---|---|---|
-| `DSH_PROBE_URL` | `http://127.0.0.1:3080` | 目标 DSH Web 地址 |
-| `DSH_PROBE_CHROME` | 平台常见位置 | Chrome/Chromium 可执行文件路径 |
-| `DSH_PROBE_SESSION` | 内置常用标题 | 目标会话标题片段（逗号分隔多个备选） |
-| `DSH_PROBE_ARTIFACTS` | `<仓库>/artifacts` | 截图输出目录（已 gitignore） |
+| `DSH_PROBE_URL` | `http://127.0.0.1:3080` | Target DSH Web URL |
+| `DSH_PROBE_CHROME` | Platform default | Path to Chrome/Chromium executable |
+| `DSH_PROBE_SESSION` | Builtin list | Target session title fragment |
+| `DSH_PROBE_ARTIFACTS` | `<repo>/artifacts` | Screenshot output directory |
 
 ```sh
-node scripts/shot.mjs          # 收起/展开两张截图
-node scripts/probe-panel.mjs   # 面板是否被容器裁剪
-node scripts/probe-popover.mjs # 悬浮面板边界与开合
-node scripts/verify-render.mjs # 完整渲染验证（含明暗主题、中英文界面）
+node scripts/shot.mjs          # Take collapsed/expanded screenshots
+node scripts/probe-panel.mjs   # Test panel container clipping
+node scripts/probe-popover.mjs # Test popover bounds and toggle
+node scripts/verify-render.mjs # Full render verification (light/dark themes, ZH/EN)
 ```
 
-## 维护者发布
+## Maintainer releases
 
-首次发布需要先在本地完成 npm 的账户验证并执行 `npm publish --access public`；包在 npm 上创建成功后，再为仓库配置 Trusted Publisher。之后创建 GitHub Release 即会由工作流发布新版本。工作流会检测版本是否已存在，因此补建 `v0.1.0` Release 时不会重复发布。
+For the first release, complete npm account verification and run `npm publish --access public` locally. Once the package exists on npm, configure Trusted Publishing for this repository. Subsequent GitHub Releases publish new versions through the workflow.
 
-1. 确认 `package.json` 与 `CHANGELOG.md` 版本一致并执行 `npm run verify`。
-2. 创建 `v<version>` GitHub Release。
-3. `release.yml` 通过 npm Trusted Publishing 发布带 provenance 的预构建包。
-4. 在 GitHub 添加 `dsh-plugin`、`dsh`、`deepseek-harness` topics，供 Awesome DSH Plugin 自动发现。
+1. Ensure `package.json` and `CHANGELOG.md` versions match and run `npm run verify`.
+2. Create `v<version>` GitHub Release.
+3. `release.yml` publishes the prebuilt package via npm Trusted Publishing with provenance.
 
-首次发布前，需要在 npm 包设置中把本仓库的 `release.yml` 配置为 Trusted Publisher，并在 GitHub 创建 `npm` environment。
-
-## 插件结构
+## Plugin architecture
 
 ```
 dsh-usage-chart/
-├── package.json          # dsh.bundle（安装层）+ dsh.client（浏览器半区）+ exports["./client"]
-├── cordis.patch.yml      # 插件行插入（config.apiKey / baseUrl / pricingFile / currency…）
-├── build.mjs             # esbuild 双产物（+ client 纯模块测试束）+ tsc 类型声明（lib/types）
+├── package.json          # dsh.bundle (install layer) + dsh.client (browser half) + exports["./client"]
+├── cordis.patch.yml      # Plugin insertion config (config.apiKey / baseUrl / pricingFile / currency…)
+├── build.mjs             # esbuild dual outputs (+ client pure test bundle) + tsc type defs (lib/types)
 ├── src/
-│   ├── index.ts          # host 半区：/balance 余额代理 + /usage 轮次折叠 + /pricing 价格快照
-│   │                     #          + /meta 币种配置下发 + /rate 实时汇率代理（多源回退）
+│   ├── index.ts          # Host half: /balance proxy + /usage round fold + /pricing snapshot
+│   │                     #          + /meta currency config + /rate live FX proxy
 │   ├── pricing/
-│   │   ├── calc.ts       # 纯共享计算（成本分拆/多币种格式化；两个半区 bundle 同一份）
-│   │   ├── source.ts     # PricingSource 接缝：builtin 刊例价 + pricing.json 文件适配器
-│   │   └── resolve.ts    # PricingResolver：覆盖 > 内置 > 回退，未知模型显式标记
+│   │   ├── calc.ts       # Pure shared pricing math (dual-currency, peak/off-peak)
+│   │   ├── source.ts     # PricingSource seam: builtin list prices + pricing.json file adapter
+│   │   └── resolve.ts    # PricingResolver: user file > builtin > fallback
 │   ├── usage/
-│   │   └── rounds.ts     # RoundFold：耗时/TTFT/TPS/模型归因/结束原因/每轮成本（纯函数）
+│   │   ├── rounds.ts     # RoundFold: duration/TTFT/TPS/model/source attribution/end reason/cost
+│   │   └── compactions.ts # CompactionFold: compaction range/freed tokens/summarize dual-currency cost
 │   └── client/
-│       ├── index.ts      # client 入口：注册 composer.dock + assistant-actions 槽位
-│       ├── UsageIndicator.tsx  # 输入框下方一行指示器（含上下文压力条）
-│       ├── UsagePanel.tsx      # 可视化面板（汇总 / 成本 / 每轮图表 / 余额）编排根
-│       ├── charts.tsx          # 零依赖 SVG/HTML 原语（堆叠条/图例）
-│       ├── chart/RoundBars.tsx # 深模块柱状图（三视角 + 耗时叠加 + 异常标记 + 解释卡）
-│       ├── rounds/             # observed.ts（本页观测）/ history.ts（宿主历史）/ types.ts
-│       ├── diagnose/anomaly.ts # 成本突增判定（图表与徽章共享的纯模块）
-│       ├── badge/CostBadge.tsx # assistant 消息尾部可关闭成本徽章
-│       ├── pricing-api.ts      # usePricing：/pricing 快照消费（client 唯一价格输入）
-│       ├── currency.ts         # 币种/汇率 store（/meta 配置 + 切换 + /rate 刷新）
-│       ├── balance.ts          # 余额读取 hook（经宿主代理）
-│       └── styles.ts           # 注入样式（<style data-plugin>）
-└── types/                # vendored 最小类型声明（DSH client 包未发布稳定版）
+│       ├── index.ts      # Client entry: registers composer.dock + assistant-actions slots
+│       ├── UsageIndicator.tsx  # Dock indicator line (with 3-segment colored pressure bar)
+│       ├── UsagePanel.tsx      # Visual dashboard panel composition root
+│       ├── charts.tsx          # Zero-dependency SVG/HTML primitives (bars / legends)
+│       ├── chart/RoundBars.tsx # Deep module round bar chart (3 modes + duration line + anomaly chip + source)
+│       ├── rounds/             # observed.ts / history.ts / types.ts
+│       ├── diagnose/
+│       │   ├── anomaly.ts      # Cost anomaly detector (shared pure module)
+│       │   └── context.ts      # ContextReport: breakdown / compaction stats / suggestions
+│       ├── badge/CostBadge.tsx # Assistant message cost badge
+│       ├── pricing-api.ts      # usePricing: /pricing snapshot consumer
+│       ├── currency.ts         # Currency store (/meta config + switch + /rate refresh)
+│       ├── balance.ts          # Balance query hook (proxied through Host)
+│       └── styles.ts           # Injected CSS (<style data-plugin>)
+└── types/                # Vendored minimal type declarations
 ```
 
-## 数据与安全边界
+## Data and security boundaries
 
-- token 与上下文数据来自当前 DSH 会话投影；每轮图表优先读取会话日志，读取失败时会明确标注并回退到本页观测。
-- 成本为官方刊例价估算（支持用户覆盖 `pricing.json`）；价格只在宿主解析，client 经 `/pricing` 快照消费，官方价格调整后可通过覆盖文件即时修正。
-- 币种与汇率：`/meta` 下发显示配置；`/rate` 经宿主代理拉取汇率（浏览器不直连外部汇率源）；汇率源强制 HTTPS（仅回环放行 HTTP）。
-- 余额经宿主同源路由代理（浏览器直连官方 API 有 CORS 与密钥暴露问题）。
-- Host 路由只接受同源 GET 请求，并为 JSON 响应设置 `no-store`；插件不会把 API Key 发送到浏览器。
-- 自定义 API 地址必须使用 HTTPS；仅回环地址允许 HTTP，便于连接本地代理。
+- Token and context data come from the active DSH session projections; per-round chart reads the session log and falls back to page-observed deltas if unavailable.
+- Costs are estimated based on official list prices (user-overridable via `pricing.json`); price resolution happens only on the Host.
+- Currency and rates: `/meta` delivers display config; `/rate` proxies live FX rates via the Host (browser never directly contacts external rate providers); rate URLs require HTTPS (loopback HTTP allowed for local testing).
+- Balance is queried via the same-origin Host proxy (direct browser requests have CORS and key-exposure risks).
+- Host routes only accept same-origin GET requests and set `no-store` on JSON responses; the plugin never sends the API key to the browser.
 
-## 兼容性
+## Compatibility
 
-| 组件 | 支持范围 |
+| Component | Supported |
 |---|---|
-| DSH | ≥ 0.1.0-rc.6，当前按 0.1.x API 构建 |
+| DSH | ≥ 0.1.0-rc.6, built against the 0.1.x API |
 | Node.js | ≥ 20 |
 | Web UI | React 18 / `conversation.composer.dock` + `conversation.chat.assistant-actions` |
-| 系统 | macOS、Linux、Windows（纯 JavaScript，无原生依赖） |
+| OS | macOS, Linux, Windows (pure JavaScript, no native dependencies) |
 
-## 社区与开源
+## Community and open source
 
-- [贡献指南](./CONTRIBUTING.md)
-- [行为准则](./CODE_OF_CONDUCT.md)
-- [支持渠道](./SUPPORT.md)
-- [安全报告](./SECURITY.md)
-- [第三方声明](./THIRD_PARTY_NOTICES.md)
+- [Contributing](./CONTRIBUTING.md)
+- [Code of Conduct](./CODE_OF_CONDUCT.md)
+- [Support](./SUPPORT.md)
+- [Security reporting](./SECURITY.md)
+- [Third-party notices](./THIRD_PARTY_NOTICES.md)
 
 ## License
 

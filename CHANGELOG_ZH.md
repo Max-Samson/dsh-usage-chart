@@ -3,6 +3,20 @@
 本文件记录本项目所有重要变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。英文版见 [CHANGELOG.md](./CHANGELOG.md)。
 
+## [1.1.0] - 2026-08-26
+
+里程碑交付：**上下文可解释性与压缩诊断**。把「上下文为什么变大、哪一轮被压缩、释放了多少、压缩摘要自身花了多少」变成可解释视图（Dock 入口 + 面板诊断专区），同时支持上下文增长来源归因。
+
+### 新增
+
+- **上下文构成与压缩诊断专区**：面板新增「上下文与压缩诊断」专区，三列并排展示系统提示（System Prompt）、工具定义（Tools Schema）、历史消息（Messages）的 Token 规模与百分比，并配有系统蓝 / 工具橙 / 消息绿的分段条，明确标注官方 `contextBreakdown` 投影的启发式近似分桶口径。
+- **Compaction 压缩折叠与成本核算**：Host 端新增 `foldCompactions`（`src/usage/compactions.ts`），从事件流解析 `compaction/start`、`compaction/summary`、`compaction/prune`、`compaction/end`，精确统计裁剪范围（`shadowedRange` / `shadowedSeqs`）、释放 Token 规模（`shadowedTokenCount`）、发生轮次、摘要生成模型及 summarize 调用的双币种成本估算（高峰/空闲时段自适应计费）。
+- **压缩时间线与节约统计**：诊断专区汇总展示总裁剪释放的 Token 规模与压缩总次数，逐条列出各轮压缩记录（裁剪量、发生轮次、summarize 调用开销）。
+- **容量预警与优化建议**：根据上下文占用比例（`contextPressure` 投影）自动给出优化建议（≥75% 提示考虑开新会话或减少大文件注入，≥90% 提示上下文即将耗尽）。
+- **Dock 压力条三段着色**：消费官方 `contextBreakdown` 投影，在输入框下方的细压力条内将系统（蓝）、工具（橙）、消息（绿）按比例分段渲染，悬浮展示各段百分比，无 breakdown 时自动平滑回退至单色压力条。
+- **轮次增长来源归因（userSource）**：Host 端 `foldRounds` 提取 `user/message` 的来源属性（人工输入 `human`、Agent 注入 `agent.inject`、目标续跑 `continuation` 等），图表 Tooltip 解释卡显式展示该轮的输入来源标识。
+- **新增导出**：`foldCompactions` 函数与 `CompactionRecord` 类型。
+
 ## [1.0.2] - 2026-08-26
 
 ### 修复与优化

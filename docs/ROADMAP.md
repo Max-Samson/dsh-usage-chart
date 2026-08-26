@@ -180,33 +180,29 @@ pricing 解析优先级（host 侧，每次请求实时解析）：
 - **当前计费时段实时标注**：面板头部以红（高峰）/ 绿（空闲）tag 实时标注当前计费时段，跨整点与周末自动翻转。
 
 
-### 🌟 第一梯队：v1.1.0 — 上下文可解释性与压缩诊断（核心差异化特性 · 下一版本最高优先级）
+### ✅ v1.1.0 — 上下文可解释性与压缩诊断 · 已交付 2026-08-26
 
-**目标**：把「上下文为什么变大、哪一轮被压缩、释放了多少、压缩摘要自身花了多少」变成可解释视图（Dock 入口 + 成本关联解释，不与 dsh-context 全面重叠）。
+**目标**：把「上下文为什么变大、哪一轮被压缩、释放了多少、压缩摘要自身花了多少」变成可解释视图（Dock 入口 + 面板诊断专区），同时支持输入来源归因。
 
-**数据源（§3.2/§3.3 已验证，实施前复核）**
+**落地内容**：
 
-- `contextBreakdown` 投影：`systemTokens / toolsTokens / messageTokens`——「上下文为什么变大」官方已算好，直接消费并标注近似值；
-- `contextPressure` 投影：`pressureTokens / projectedTokens / contextWindow`——压力 vs 容量（v0.2 压力条已消费，v1.1 深化）；
-- `compaction/summary` 事件：`shadowedTokenCount` / `shadowedRange{start,end}` / `shadowedSeqs` / `provider` / `model` / `usage?`——哪一轮压缩、释放多少 token、summarize 调用花了多少；
-- `user/message.source`：distinguish 人工输入 / `agent.inject()` / 目标续跑——上下文增长来源归因。
+1. **compaction 折叠**（Host，`usage/compactions.ts`）：从会话日志折叠压缩记录
+   `{ seq, startedAt, endedAt, turn, shadowedTokenCount, shadowedRange, shadowedSeqs, model, summarizeUsage, cost }`，
+   纯函数 + 合成事件流测试，`/usage` 路由聚合下发；
+2. **ContextReport**（Client，`diagnose/context.ts`，纯函数）：
+   `analyzeContext(pressure, breakdown, compactions, currency) → report`——容量占用率 + 三段构成占比（系统/工具/消息）+ 压缩聚合统计 + 阈值建议（`caution` ≥75%、`critical` ≥90%）；
+3. **Dock 压力条深化**：
+   消费官方 `contextBreakdown` 投影，在指示器压力条内将系统（蓝）、工具（橙）、消息（绿）按比例分段渲染，悬浮展示各段百分比，无 breakdown 时自动平滑回退；
+4. **面板上下文与压缩诊断小节**：
+   三列展示构成卡片 + 分段条 + 启发式近似注记 + 压缩时间线（轮次/释放量/summarize 成本）+ 优化建议条；
+5. **轮次增长来源归因**：
+   Host 端 `foldRounds` 提取 `user/message` 来源（`human` / `agent.inject` / `continuation`），图表 Tooltip 解释卡显式展示来源标识。
 
-**模块落地（按 ARCHITECTURE §2.2）**
+**交付记录（2026-08-26）**：
+- 纯函数纯模块：零运行时依赖，测试集由 31 项扩充至 **39 项全绿**；
+- 中英双语完整覆盖；深浅主题自适应；保持键盘可达。
 
-1. **compaction 折叠**（host，`usage/compactions.ts` 或 RoundFold 扩展）：从事件流折叠压缩记录
-   `{ seq, startedAt, endAt, shadowedTokenCount, shadowedRange, model, summarizeCost? }`，
-   纯函数 + 合成事件流测试（复用 rounds.test 模式）；
-2. **ContextReport**（client，`diagnose/context.ts`，纯函数）：
-   `report(pressure, breakdown, compactions) → sections[]`——组成（官方投影）+ 压缩时间线 +
-   阈值建议（开新会话 / 压缩 / 减少大文件注入，只出提示文案不越权执行）；
-3. **Dock 压力条深化**：分段细压力条（系统/工具/消息多段着色）+ 压缩事件刻度与释放动效，
-   沿用现有压力条位置与极简交互；
-4. **面板上下文与压缩小节**：压缩时间线（哪一轮压缩、释放多少、summarize 花费）+ 增长归因
-   （人工/注入/续跑），与成本解释卡同区可切换。
-
-**验收**：零运行时依赖不破；contextBreakdown 消费标注为近似值；compaction 折叠有测试；中英双语；键盘可达。
-
-### ⚡ 第二梯队：v1.1.x — 工程性能与交互体验收敛（高性价比优化）
+### ⚡ v1.1.x — 工程性能与交互体验收敛（高性价比优化）
 
 **目标**：保障超长会话下的秒开体验与配置调试流畅度。
 
@@ -220,7 +216,7 @@ pricing 解析优先级（host 侧，每次请求实时解析）：
 4. **官方价格定期自动探测（远期选配）**：
    - 借鉴 6h/12h 后台轻量探测官方价格更新，当官方调价时自动提示更新或刷新内置表。
 
-### 📊 第三梯队：v1.2.0 — 跨会话轻量概览（二级扩展视图 · 选配）
+### 📊 v1.2.0 — 跨会话轻量概览（二级扩展视图 · 选配）
 
 **目标**：满足用户跨会话复盘 Token 消耗走势的需求，保持低侵入设计（独立设置页/二级弹窗，不干扰输入框主区）。
 
@@ -231,7 +227,7 @@ pricing 解析优先级（host 侧，每次请求实时解析）：
    - 提供“一键清除本地聚合历史”按钮，严格守住本地隐私边界；
 4. **轻量持久化**：只持久化聚合数据（或从会话日志按需索引），不建立重型数据库。
 
-### 🛡️ 第四梯队：v1.3.0 — 预算警戒线与稳定收敛
+### 🛡️ v1.3.0 — 预算警戒线与稳定收敛
 
 **目标**：防止 Agent 递归死循环/超长任务造成意外高额扣费，冻结对外契约。
 

@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). 中文版见 [CHANGELOG_ZH.md](./CHANGELOG_ZH.md).
 
+## [1.1.0] - 2026-08-26
+
+Milestone release: **Context Explainability & Compaction Diagnostics**. Turns "why context grows, which round got compacted, how many tokens were freed, and how much the summarize step cost" into an interpretable view (dock indicator + dedicated panel diagnostics section), alongside user/message input source attribution.
+
+### Added
+
+- **Context & Compaction Diagnostics Section**: added a dedicated diagnostics section in the panel showing System Prompt, Tools Schema, and Message History token counts and percentage breakdown, complete with a multi-segment color bar (system blue, tools amber, messages green) and an explicit heuristic-approximation note based on the official `contextBreakdown` projection.
+- **Compaction Lifecycle Folding & Cost Accounting**: host-side `foldCompactions` (`src/usage/compactions.ts`) parses `compaction/start`, `compaction/summary`, `compaction/prune`, and `compaction/end` events from session logs, tracking shadowed token count, shadowed range/seqs, round attribution, summarize model, and dual-currency summarize cost (peak/off-peak tier aware).
+- **Compaction Timeline & Savings**: the diagnostics section summarizes total freed tokens and total compaction occurrences, listing each compaction record (round, freed tokens, summarize cost).
+- **Context Occupancy Recommendations**: actionable recommendations based on `contextPressure` occupancy (≥75% suggests starting a new session or trimming large file injections; ≥90% warns of imminent context exhaustion).
+- **Segmented Dock Pressure Bar**: consumes official `contextBreakdown` projection to render system (blue), tools (amber), and messages (green) multi-segment bars on the composer dock indicator with detailed tooltip percentages, smoothly falling back to single-color bar when breakdown is unavailable.
+- **Per-Round User Source Attribution**: `foldRounds` captures `userSource` (`human`, `agent.inject`, `continuation`) from `user/message` events and displays the attribution badge in the chart tooltip explainer card.
+- **New Exports**: `foldCompactions` function and `CompactionRecord` type.
+
 ## [1.0.2] - 2026-08-26
 
 ### Fixed

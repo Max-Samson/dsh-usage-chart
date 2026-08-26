@@ -105,7 +105,7 @@ HistoryStore = { appendSample(round), queryRange(from,to) }   // 接口
 | v0.2.0 | RoundFold 加深（耗时/TTFT/TPS/**模型归因 `request/context`+回退**/结束原因）、**PricingSource 接缝现在就立**（builtin + file 适配器）+ Resolver、`/pricing` 路由、RoundBars cost 模式 + 叠加 + 异常标记、Anomaly、CostBadge、Dock 压力条 | `pricing.ts` 拆分 calc/source；LiveObservation / HistoryFeed **保持独立**（决策 2）；`usage-api.ts` 移除 → `rounds/` | ✅ 已交付 2026-08-15 |
 | v0.3.0 | **多币种成本显示**：`config.currency`/`cnyPerUsd`、`/meta` 配置下发、`/rate` 实时汇率代理（多源回退 + 上次汇率持久化）、client `currency.ts` store（切换 + localStorage） | 成本格式化下沉 `pricing/calc.ts`（`formatUsd` → 多币种）；槽位注册改 `ctx.slots.inject` 等待声明 | ✅ 已交付 2026-08-15 |
 | v1.0.0 | **首个完整版本**：RoundBars 全量轮次横向滚动（固定细柱宽、自动滚到最新、箭头/渐隐提示越界）、值标签自适应、图表最小宽自适应、`scripts/probe-chart.mjs` 验证脚本 | 移除 12 轮截断（`MAX_VISIBLE_ROUNDS`）；工具提示改「内容坐标 − scrollLeft」定位 | ✅ 已交付 2026-08-15 |
-| v1.1.0 | ContextReport（`diagnose/context.ts`）、compaction 折叠（独立 `usage/compactions.ts`）、Dock 压力条深化（breakdown 分段 + 压缩刻度） | 压力条用 `contextPressure` 投影，不新开路由；`contextBreakdown` 消费标注近似值 | 下一版本 |
+| v1.1.0 | ContextReport（`diagnose/context.ts`）、compaction 折叠（独立 `usage/compactions.ts`）、Dock 压力条深化（breakdown 分段 + 悬浮详情）、输入来源归因（`userSource`） | 压力条用 `contextPressure` + `contextBreakdown` 投影，不新开路由；`contextBreakdown` 消费标注近似值；`/usage` 路由返回 compactions | ✅ 已交付 2026-08-26 |
 | v1.2.0 | HistoryStore 接缝 + 设置页历史视图、导出 | 热力图作为入口之一（复用 RoundBars 的 SVG 设施） | 可选 |
 
 ## 4. 测试面（接口即测试面）
@@ -116,10 +116,13 @@ HistoryStore = { appendSample(round), queryRange(from,to) }   // 接口
 | PricingResolver | 注入 source map fake（builtin/file），断言优先级与未知标记 | ✅ `tests/pricing.test.mjs`（临时目录真写读） |
 | Anomaly | 喂 round 序列断言 flag | ✅ `tests/anomaly.test.mjs`（经 `lib/client-test.js` 束） |
 | 币种/汇率（v0.3） | 断言 `normalizeFxUrl`、`fetchLiveRate` 多源回退、`/meta`/`/rate` 路由 | ✅ 并入 `tests/core.test.mjs` |
+| Compaction 折叠（v1.1） | 喂合成压缩事件流，断言 shadowed 规模与 summarize 成本核算 | ✅ `tests/compactions.test.mjs` |
+| 上下文诊断（v1.1） | 喂投影与压缩历史，断言容量、分段比例与优化建议 | ✅ `tests/compactions.test.mjs`（经 `lib/context-test.js` 束） |
+| 来源归因（v1.1） | 喂带 `source` 的 `user/message` 事件，断言 `userSource` 归因 | ✅ `tests/compactions.test.mjs` |
 | HistoryStore（v1.2） | memory fake + 临时目录 JSONL 真写读 | 待 v1.2 |
 | HistoryFeed / RoundBars / CostBadge | playwright-core 视觉验证（现有 `scripts/probe-*.mjs` 扩展） | ✅ `scripts/verify-render.mjs` 对运行中 DSH Web 端到端通过 |
 
-> 当前 `npm run verify` 共 31 项测试全绿。
+> 当前 `npm run verify` 共 39 项测试全绿。
 
 ## 5. ADR 备忘（本设计的决策点）
 
