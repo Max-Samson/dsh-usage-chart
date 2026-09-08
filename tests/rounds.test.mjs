@@ -227,3 +227,63 @@ test('/usage route returns rounds with cost and timing', async () => {
   assert.equal(body.rounds[0].cost.usd.total, 0.66)
   assert.equal(body.rounds[0].cost.unknownModel, false)
 })
+
+/** 构造一个「只暴露 snapshotEvents()、不暴露 events」的 session 句柄，模拟 dsh-session >= 0.1.2-rc.1。 */
+function snapshotSession(events) {
+  return {
+    id: 'session-test',
+    // 新版 dsh-session 移除了 events 属性，只剩 snapshotEvents()。
+    get events() { throw new Error('session.events was removed in dsh-session >= 0.1.2-rc.1') },
+    snapshotEvents() { return events },
+  }
+}
+
+test('/usage route prefers snapshotEvents() when the new API is present', async () => {
+  const events = [
+    { type: 'turn/start', seq: 1, time: 1_000, data: { turn: 1 } },
+    { type: 'request/context', seq: 2, time: 1_010, data: { provider: 'deepseek', model: 'deepseek-v4-pro' } },
+    { type: 'assistant/message', seq: 3, time: 2_000, data: { turn: 1, step: 0, usage: { inputTokens: 1_000_000, outputTokens: 0 } } },
+    { type: 'turn/end', seq: 4, time: 5_000, data: { turn: 1, reason: { kind: 'completed' } } },
+  ]
+  const routes = new Map()
+  apply({
+    effect(setup) { setup() },
+    get() { return undefined },
+    webServer: { register(route) { routes.set(route.path, route); return () => {} } },
+    // 有 snapshotEvents、无 events —— 必须走 snapshotEvents() 分支，且绝不触碰 events 属性。
+    sessions: { get(id) { return id === 'session-test' ? snapshotSession(events) : undefined } },
+  })
+
+  const route = routes.get('/dsh-usage-chart/usage')
+  const recorder = responseRecorder()
+  await route.handler({ method: 'GET', url: '/dsh-usage-chart/usage?session=session-test', headers: { host: 'localhost:3000' } }, recorder)
+  assert.equal(recorder.status, 200)
+  const body = JSON.parse(recorder.body)
+  assert.equal(body.ok, true)
+  assert.equal(body.sessionId, 'session-test')
+  // 走 snapshotEvents() 分支：time 字段被消费，durationMs / 峰值计费都应正确。
+  assert.equal(body.rounds.length, 1)
+  assert.equal(body.rounds[0].startedAt, 1_000)
+  assert.equal(body.rounds[0].endedAt, 5_000)
+  assert.equal(body.rounds[0].durationMs, 4_000)
+  assert.equal(body.rounds[0].cost.cny.total, 4.5)
+  assert.equal(body.rounds[0].cost.usd.total, 0.66)
+  assert.equal(Array.isArray(body.compactions), true)
+  // 新分支优先：即便 events 属性仍暴露，也应调用 snapshotEvents() 而非 events。
+  const both = { id: 'session-test', events: [], snapshotEvents: () => events }
+  const bothRoutes = new Map()
+  apply({
+    effect(setup) { setup() },
+    get() { return undefined },
+    webServer: { register(route) { bothRoutes.set(route.path, route); return () => {} } },
+    sessions: { get(id) { return id === 'session-test' ? both : undefined } },
+  })
+  const bothRecorder = responseRecorder()
+  await bothRoutes.get('/dsh-usage-chart/usage').handler(
+    { method: 'GET', url: '/dsh-usage-chart/usage?session=session-test', headers: { host: 'localhost:3000' } },
+    bothRecorder,
+  )
+  const bothBody = JSON.parse(bothRecorder.body)
+  assert.equal(bothBody.rounds.length, 1, '同时暴露 events 与 snapshotEvents 时应优先用 snapshotEvents')
+  assert.equal(bothBody.rounds[0].durationMs, 4_000)
+})

@@ -47,6 +47,8 @@ export interface LocaleService {
 export interface SessionEventLike {
   type: string
   seq: number
+  /** Unix epoch 毫秒。 */
+  time: number
   data: {
     turn?: number
     step?: number
@@ -56,11 +58,18 @@ export interface SessionEventLike {
 }
 
 /** dsh-session 的 SessionStore 服务（仅声明本插件用到的面）。 */
+export interface SessionHandle {
+  id: string
+  /** 旧版 dsh-session（< 0.1.2-rc.1）的公开事件数组；新版已移除，改为 snapshotEvents()。 */
+  events?: readonly SessionEventLike[]
+  /** 新版 dsh-session（>= 0.1.2-rc.1）的公开事件快照方法。 */
+  snapshotEvents?: () => readonly SessionEventLike[]
+}
 export interface SessionStoreService {
   /** 按 id 查实时会话；不存在返回 undefined。 */
-  get(id: string): { id: string; events: readonly SessionEventLike[] } | undefined
+  get(id: string): SessionHandle | undefined
   /** 所有实时会话（创建顺序）。 */
-  list(): { id: string; events: readonly SessionEventLike[] }[]
+  list(): SessionHandle[]
 }
 
 /** dsh-credentials 的凭据服务（本插件用到的面：按引用解析密钥值）。 */

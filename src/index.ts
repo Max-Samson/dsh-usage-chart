@@ -402,7 +402,11 @@ export function apply(ctx: Context, config: Config = {}): void {
         writeJson(res, 404, { ok: false, reason: 'session-not-found' })
         return
       }
-      const events = session.events as readonly SessionEventLike[]
+      // dsh-session >= 0.1.2-rc.1 removed the `events` property; prefer the
+      // public snapshotEvents() API and fall back to the legacy property.
+      const events: readonly SessionEventLike[] = typeof session.snapshotEvents === 'function'
+        ? session.snapshotEvents()
+        : session.events ?? []
       const { totals, rounds } = foldRounds(events, resolver)
       const compactions = foldCompactions(events, resolver)
       writeJson(res, 200, { ok: true, sessionId, totals, rounds, compactions })
