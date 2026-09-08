@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). 中文版见 [CHANGELOG_ZH.md](./CHANGELOG_ZH.md).
 
+## [1.1.4] - 2026-09-08
+
+### Fixed
+
+- **`dsh-session >= 0.1.2-rc.1` compatibility (snapshotEvents())** — [PR #7](https://github.com/Max-Samson/dsh-usage-chart/pull/7): `dsh-session` removed its public `events` property in `0.1.2-rc.1` (replaced by the `snapshotEvents()` method); the `/usage` route then threw `TypeError: events is not iterable`, which `dsh-host-webserver` wrapped as a bare `400` empty response, and the per-round chart disappeared (the client fell back to the empty observed-rounds path). Reproduced live on `dsh-session 0.1.2-rc.1`: `/usage?session=<loaded>` returned an empty `400` while `/usage?session=<unknown>` returned the plugin `404` JSON and folding the same log offline succeeded — confirming the crash was only the new runtime API shape. The host now reads events via capability detection — prefers `session.snapshotEvents()` when the function is present and falls back to the legacy `session.events ?? []` (so a missing API can never crash the route again). The vendored `SessionEventLike` type adds the `time` field (Unix epoch ms) and a `SessionHandle` shape (optional `events` + optional `snapshotEvents`) so `SessionStoreService.get()/list()` stay valid across both API generations. Verified against the upstream `deepseek-harness` source: `Session.events` was removed from `0.1.2-alpha.4` onward (official architecture note `2026-08-21-session-log-read-intent`); the installed `0.1.0-rc.6` still exposes `events`, so the fallback path remains covered.
+- **Test coverage for the new `snapshotEvents()` access path**: added `tests/rounds.test.mjs` → `/usage route prefers snapshotEvents() when the new API is present`, mocking a session handle that exposes only `snapshotEvents()` (its `get events()` throws, proving the route never reads the removed property), asserts `time` is consumed (duration/peak billing) and that `snapshotEvents()` wins when both APIs are present.
+
 ## [1.1.2] - 2026-08-26
 
 ### Improved & Fixed

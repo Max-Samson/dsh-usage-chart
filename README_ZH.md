@@ -78,7 +78,7 @@ dsh web --profile web                          # 启动 DSH Web（已在运行�
 
 ```sh
 # 方式①：显式指定目标版本
-dsh plugin --profile web add dsh-usage-chart@1.1.2
+dsh plugin --profile web add dsh-usage-chart@1.1.4
 # 方式②：先移除再重装（回到最新版）
 dsh plugin --profile web remove dsh-usage-chart
 dsh plugin --profile web add dsh-usage-chart
@@ -91,7 +91,7 @@ dsh plugin --profile web add dsh-usage-chart
 
 > ⚠️ **未全局安装 dsh（报 `dsh: command not found` / PowerShell `无法将“dsh”项识别为…`）？
 > 把上面每条 `dsh` 都写成 `npx --yes @deepseek-ai/dsh`**，例如
-> `npx --yes @deepseek-ai/dsh plugin --profile web add dsh-usage-chart@1.1.2`
+> `npx --yes @deepseek-ai/dsh plugin --profile web add dsh-usage-chart@1.1.4`
 > （原因与解法见 [FAQ](#常见问题faq) 第一条）。
 
 ### 方式二：从 GitHub 安装（源码构建）
@@ -331,7 +331,7 @@ dsh-usage-chart/
 
 | 组件 | 支持范围 |
 |---|---|
-| DSH | ≥ 0.1.0-rc.6，当前按 0.1.x API 构建 |
+| DSH | ≥ 0.1.0-rc.6，当前按 0.1.x API 构建；已适配 `dsh-session` 的 `snapshotEvents()` API——`Session.events` 自 `0.1.2-rc.1` 起移除，`/usage` 路由通过 `snapshotEvents()` 读取事件，并保留旧版 `events` 属性回退 |
 | Node.js | ≥ 20 |
 | Web UI | React 18 / `conversation.composer.dock` + `conversation.chat.assistant-actions` |
 | 系统 | macOS、Linux、Windows（纯 JavaScript，无原生依赖） |

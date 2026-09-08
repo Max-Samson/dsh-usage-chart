@@ -3,6 +3,13 @@
 本文件记录本项目所有重要变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。英文版见 [CHANGELOG.md](./CHANGELOG.md)。
 
+## [1.1.4] - 2026-09-08
+
+### 修复
+
+- **适配 `dsh-session >= 0.1.2-rc.1`（改用 `snapshotEvents()`）**——[PR #7](https://github.com/Max-Samson/dsh-usage-chart/pull/7)：`dsh-session` 在 `0.1.2-rc.1` 移除了公开的 `events` 属性（改为 `snapshotEvents()` 方法）；`/usage` 路由随之抛 `TypeError: events is not iterable`，被 `dsh-host-webserver` 包装成裸 `400` 空响应，每轮图表消失（客户端回退到空的 observed-rounds 路径）。已在 `dsh-session 0.1.2-rc.1` 上实测复现：`/usage?session=<已加载会话>` 返回空 `400`、`/usage?session=<未知>` 返回插件 `404` JSON、离线折叠同一日志却成功——证明崩溃仅源于新版运行时 API 形状。宿主现在通过能力检测读取事件——`snapshotEvents` 为函数时优先调用它，否则回退到旧版 `session.events ?? []`（即便 API 缺失也绝不再导致路由崩溃）。同时为 vendored 的 `SessionEventLike` 类型补齐 `time` 字段（Unix epoch 毫秒），并新增 `SessionHandle` 形状（可选 `events` + 可选 `snapshotEvents`），使 `SessionStoreService.get()/list()` 在新旧两代 API 下均成立。已对照上游 `deepseek-harness` 源码核实：`Session.events` 自 `0.1.2-alpha.4` 起移除（官方架构笔记 `2026-08-21-session-log-read-intent`）；本机安装的 `0.1.0-rc.6` 仍暴露 `events`，因此回退分支持续有覆盖。
+- **为新的 `snapshotEvents()` 读取路径补充测试**：新增 `tests/rounds.test.mjs` → `/usage route prefers snapshotEvents() when the new API is present`，mock 一个只暴露 `snapshotEvents()` 的会话句柄（其 `get events()` 会抛错，证明路由绝不读取被移除的属性），断言 `time` 被正确消费（耗时/峰值计费），并验证同时暴露两者时优先使用 `snapshotEvents()`。
+
 ## [1.1.2] - 2026-08-26
 
 ### 优化与修复
