@@ -3,14 +3,14 @@ import test from 'node:test'
 
 import { apply, foldRounds, foldTurnUsage, tierAt } from '../lib/index.js'
 
-/** 2026-08-17 内置刊例价（双币种 /1M）：flash 高峰/空闲。 */
+/** 2026-09-10 内置刊例价（双币种 /1M）：flash 高峰/空闲。 */
 const FLASH_PEAK = {
-  cny: { cacheMissInput: 3.0, cacheHitInput: 0.10, output: 9.0 },
-  usd: { cacheMissInput: 0.44, cacheHitInput: 0.014, output: 1.32 },
+  cny: { cacheMissInput: 2, cacheHitInput: 0.04, output: 8 },
+  usd: { cacheMissInput: 0.3, cacheHitInput: 0.006, output: 1.2 },
 }
 const FLASH_OFF_PEAK = {
-  cny: { cacheMissInput: 1.5, cacheHitInput: 0.05, output: 4.5 },
-  usd: { cacheMissInput: 0.22, cacheHitInput: 0.007, output: 0.66 },
+  cny: { cacheMissInput: 1, cacheHitInput: 0.02, output: 4 },
+  usd: { cacheMissInput: 0.15, cacheHitInput: 0.003, output: 0.6 },
 }
 
 /** 合成事件流工具：seq 自动递增，time 由调用方给定。 */
@@ -68,12 +68,12 @@ test('foldRounds computes per-round timing, TTFT, TPS, model attribution and cos
   assert.equal(r1.cost.estimated, false)
   // 轮 1 开始于 1970-01-01T00:00:01Z = 北京时间 08:00（空闲时段）→ 空闲价
   assert.equal(tierAt(r1.startedAt), 'offPeak')
-  assert.equal(r1.cost.cny.input, (100 / 1_000_000) * 1.5)
-  assert.equal(r1.cost.cny.cacheRead, (30 / 1_000_000) * 0.05)
-  assert.equal(r1.cost.cny.output, (20 / 1_000_000) * 4.5)
-  assert.equal(r1.cost.usd.input, (100 / 1_000_000) * 0.22)
-  assert.equal(r1.cost.usd.cacheRead, (30 / 1_000_000) * 0.007)
-  assert.equal(r1.cost.usd.output, (20 / 1_000_000) * 0.66)
+  assert.equal(r1.cost.cny.input, (100 / 1_000_000) * 1)
+  assert.equal(r1.cost.cny.cacheRead, (30 / 1_000_000) * 0.02)
+  assert.equal(r1.cost.cny.output, (20 / 1_000_000) * 4)
+  assert.equal(r1.cost.usd.input, (100 / 1_000_000) * 0.15)
+  assert.equal(r1.cost.usd.cacheRead, (30 / 1_000_000) * 0.003)
+  assert.equal(r1.cost.usd.output, (20 / 1_000_000) * 0.6)
 
   const r2 = rounds.find((r) => r.turn === 2)
   assert.ok(r2, 'round 2 present')
@@ -101,11 +101,11 @@ test('foldRounds bills peak vs off-peak rounds by their start time', () => {
   const offPeak = rounds.find((r) => r.turn === 2)
   assert.equal(tierAt(peak.startedAt), 'peak')
   assert.equal(tierAt(offPeak.startedAt), 'offPeak')
-  // 1M 未命中输入：高峰 = 空闲 × 2（CNY 3.0/1.5；USD 0.44/0.22）
-  assert.equal(peak.cost.cny.total, 3.0)
-  assert.equal(peak.cost.usd.total, 0.44)
-  assert.equal(offPeak.cost.cny.total, 1.5)
-  assert.equal(offPeak.cost.usd.total, 0.22)
+  // 1M 未命中输入：高峰 = 空闲 × 2（CNY 2/1；USD 0.3/0.15）
+  assert.equal(peak.cost.cny.total, 2)
+  assert.equal(peak.cost.usd.total, 0.3)
+  assert.equal(offPeak.cost.cny.total, 1)
+  assert.equal(offPeak.cost.usd.total, 0.15)
 })
 
 test('foldRounds tolerates missing turn/end (open round) and missing model', () => {
@@ -150,9 +150,9 @@ test('foldRounds marks unknown models and uses fallback pricing', () => {
   assert.equal(rounds[0].cost.unknownModel, true)
   assert.equal(rounds[0].cost.estimated, true)
   assert.equal(rounds[0].cost.source, 'fallback')
-  // 轮开始于北京时间 08:00（空闲）→ 1M token × flash 空闲未命中价（CNY 1.5 / USD 0.22）
-  assert.equal(rounds[0].cost.cny.total, 1.5)
-  assert.equal(rounds[0].cost.usd.total, 0.22)
+  // 轮开始于北京时间 08:00（空闲）→ 1M token × flash 空闲未命中价（CNY 1 / USD 0.15）
+  assert.equal(rounds[0].cost.cny.total, 1)
+  assert.equal(rounds[0].cost.usd.total, 0.15)
 })
 
 test('foldTurnUsage stays compatible with the v0.1 semantics', () => {
