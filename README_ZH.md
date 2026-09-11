@@ -168,16 +168,16 @@ dsh web --profile web
 
 ```json
 {
-  "deepseek-v4-flash": {
+  "deepseek-flash": {
     "offPeak": {
-      "cny": { "cacheMissInput": 1.5, "cacheHitInput": 0.05, "output": 4.5 },
-      "usd": { "cacheMissInput": 0.22, "cacheHitInput": 0.007, "output": 0.66 }
+      "cny": { "cacheMissInput": 1, "cacheHitInput": 0.02, "output": 4 },
+      "usd": { "cacheMissInput": 0.15, "cacheHitInput": 0.003, "output": 0.6 }
     },
     "peak": {
-      "cny": { "cacheMissInput": 3.0, "cacheHitInput": 0.10, "output": 9.0 },
-      "usd": { "cacheMissInput": 0.44, "cacheHitInput": 0.014, "output": 1.32 }
+      "cny": { "cacheMissInput": 2, "cacheHitInput": 0.04, "output": 8 },
+      "usd": { "cacheMissInput": 0.3, "cacheHitInput": 0.006, "output": 1.2 }
     },
-    "verifiedAt": 1755100800000
+    "verifiedAt": 1788998400000
   }
 }
 ```

@@ -19,14 +19,14 @@ import {
   tierAt,
 } from '../lib/index.js'
 
-/** 2026-08-26 内置刊例价（双币种 /1M，高峰/空闲）。 */
+/** 2026-09-10 内置刊例价（双币种 /1M，高峰/空闲）。 */
 const FLASH_OFF_PEAK = {
-  cny: { cacheMissInput: 1.5, cacheHitInput: 0.05, output: 4.5 },
-  usd: { cacheMissInput: 0.22, cacheHitInput: 0.007, output: 0.66 },
+  cny: { cacheMissInput: 1, cacheHitInput: 0.02, output: 4 },
+  usd: { cacheMissInput: 0.15, cacheHitInput: 0.003, output: 0.6 },
 }
 const FLASH_PEAK = {
-  cny: { cacheMissInput: 3.0, cacheHitInput: 0.10, output: 9.0 },
-  usd: { cacheMissInput: 0.44, cacheHitInput: 0.014, output: 1.32 },
+  cny: { cacheMissInput: 2, cacheHitInput: 0.04, output: 8 },
+  usd: { cacheMissInput: 0.3, cacheHitInput: 0.006, output: 1.2 },
 }
 const PRO_OFF_PEAK = {
   cny: { cacheMissInput: 4.5, cacheHitInput: 0.15, output: 13.5 },
@@ -42,9 +42,10 @@ test('builtin source resolves exact and prefixed models, misses unknown', () => 
   assert.deepEqual(source.resolve('deepseek-v4-pro').pricing.offPeak, PRO_OFF_PEAK)
   assert.deepEqual(source.resolve('deepseek-v4-pro').pricing.peak, PRO_PEAK)
   // 前缀匹配（带日期后缀的模型版本）
-  assert.equal(source.resolve('deepseek-v4-flash-2026-08-01').pricing.offPeak.cny.output, 4.5)
-  assert.equal(source.resolve('deepseek-v4-flash-2026-08-01').pricing.offPeak.usd.output, 0.66)
-  assert.equal(source.resolve('deepseek-v4-flash-2026-08-01').pricing.peak.usd.output, 1.32)
+  assert.equal(source.resolve('deepseek-flash-2026-09-01').pricing.offPeak.cny.output, 4)
+  assert.equal(source.resolve('deepseek-flash-2026-09-01').pricing.offPeak.usd.output, 0.6)
+  assert.equal(source.resolve('deepseek-flash-2026-09-01').pricing.peak.usd.output, 1.2)
+  assert.deepEqual(source.resolve('deepseek-flash').pricing, { offPeak: FLASH_OFF_PEAK, peak: FLASH_PEAK })
   assert.deepEqual(source.resolve('deepseek-v4-flash-vision-exp').pricing.offPeak, FLASH_OFF_PEAK)
   assert.deepEqual(source.resolve('deepseek-v4-flash-vision-exp').pricing.peak, FLASH_PEAK)
   assert.equal(source.resolve('unknown-model').pricing, null)
@@ -106,12 +107,12 @@ test('costSplitAt bills in both official currencies per tier', () => {
   const usage = { uncachedInputTokens: 1_000_000, outputTokens: 1_000_000, cacheReadTokens: 0, cacheWriteTokens: 0 }
   const offPeakAt = Date.UTC(1970, 0, 1, 0, 0, 0) // 北京时间 08:00
   const peakAt = Date.UTC(1970, 0, 1, 2, 0, 0) // 北京时间 10:00
-  // 空闲：flash 未命中 1.5 + 输出 4.5（CNY）；0.22 + 0.66（USD）
-  assert.deepEqual(costSplitAt(usage, PRICING['deepseek-v4-flash'], offPeakAt, 'cny'), { input: 1.5, cacheRead: 0, output: 4.5, total: 6 })
-  assert.deepEqual(costSplitAt(usage, PRICING['deepseek-v4-flash'], offPeakAt, 'usd'), { input: 0.22, cacheRead: 0, output: 0.66, total: 0.88 })
+  // 空闲：flash 未命中 1 + 输出 4（CNY）；0.15 + 0.6（USD）
+  assert.deepEqual(costSplitAt(usage, PRICING['deepseek-flash'], offPeakAt, 'cny'), { input: 1, cacheRead: 0, output: 4, total: 5 })
+  assert.deepEqual(costSplitAt(usage, PRICING['deepseek-flash'], offPeakAt, 'usd'), { input: 0.15, cacheRead: 0, output: 0.6, total: 0.75 })
   // 高峰 = 空闲 × 2
-  assert.deepEqual(costSplitAt(usage, PRICING['deepseek-v4-flash'], peakAt, 'cny'), { input: 3, cacheRead: 0, output: 9, total: 12 })
-  assert.deepEqual(costSplitAt(usage, PRICING['deepseek-v4-flash'], peakAt, 'usd'), { input: 0.44, cacheRead: 0, output: 1.32, total: 1.76 })
+  assert.deepEqual(costSplitAt(usage, PRICING['deepseek-flash'], peakAt, 'cny'), { input: 2, cacheRead: 0, output: 8, total: 10 })
+  assert.deepEqual(costSplitAt(usage, PRICING['deepseek-flash'], peakAt, 'usd'), { input: 0.3, cacheRead: 0, output: 1.2, total: 1.5 })
 })
 
 test('parsePricingFile validates entries and accepts dual-currency + legacy shapes', () => {
@@ -239,12 +240,14 @@ test('file source serves prefix matches and refresh after rewrite', async () => 
 })
 
 test('estimateCost / pricingFor keep v0.1 compat semantics', () => {
-  assert.deepEqual(PRICING['deepseek-v4-flash'], { peak: FLASH_PEAK, offPeak: FLASH_OFF_PEAK })
+  assert.deepEqual(PRICING['deepseek-flash'], { peak: FLASH_PEAK, offPeak: FLASH_OFF_PEAK })
+  assert.deepEqual(PRICING['deepseek-v4-flash'], PRICING['deepseek-flash'])
   // 时刻未知 → 按高峰价保守估算：1M 未命中输入 + 1M 输出（v4-pro 高峰 CNY = 9 + 27）
   assert.equal(estimateCost({ uncachedInputTokens: 1_000_000, outputTokens: 1_000_000, cacheReadTokens: 0, cacheWriteTokens: 0 }, 'deepseek-v4-pro').cny, 36)
+  assert.equal(pricingFor('deepseek-flash').estimated, false)
   assert.equal(pricingFor('deepseek-v4-flash').estimated, false)
   assert.equal(pricingFor('unknown-model').estimated, true)
-  assert.equal(BUILTIN_VERIFIED_AT, Date.parse('2026-08-26T00:00:00Z'))
+  assert.equal(BUILTIN_VERIFIED_AT, Date.parse('2026-09-10T00:00:00Z'))
 })
 
 function responseRecorder() {
@@ -274,9 +277,9 @@ test('/pricing route exposes builtin + fallback + models snapshot', async () => 
   const body = JSON.parse(recorder.body)
   assert.equal(body.ok, true)
   assert.equal(body.builtinVerifiedAt, BUILTIN_VERIFIED_AT)
-  assert.equal(body.fallback.pricing.offPeak.cny.output, 4.5)
-  assert.equal(body.fallback.pricing.offPeak.usd.output, 0.66)
-  assert.equal(body.fallback.pricing.peak.usd.output, 1.32)
+  assert.equal(body.fallback.pricing.offPeak.cny.output, 4)
+  assert.equal(body.fallback.pricing.offPeak.usd.output, 0.6)
+  assert.equal(body.fallback.pricing.peak.usd.output, 1.2)
   const models = body.models.map((m) => m.model)
   assert.ok(models.includes('deepseek-v4-flash'))
   assert.ok(models.includes('deepseek-v4-pro'))

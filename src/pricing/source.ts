@@ -31,23 +31,25 @@ export interface PricingSource {
 
 /**
  * 当前官方在售模型定价表（双币种 / 1M tokens，区分高峰/空闲时段）。
- * 来源：官方定价页（2026-08-26 核验）
+ * 来源：官方定价页（2026-09-10 核验）
  *  - 中文页 https://api-docs.deepseek.com/zh-cn/quick_start/pricing（CNY 报价）
  *  - 英文页 https://api-docs.deepseek.com/quick_start/pricing（USD 报价）
  * 高峰时段（北京时间周一至周五 09:00–12:00、14:00–18:00 = UTC 01:00–04:00、06:00–10:00）
  * 价格为空闲时段的两倍。
  */
-export const BUILTIN_PRICING: Record<string, ModelPricing> = {
-  'deepseek-v4-flash': {
-    offPeak: {
-      cny: { cacheMissInput: 1.5, cacheHitInput: 0.05, output: 4.5 },
-      usd: { cacheMissInput: 0.22, cacheHitInput: 0.007, output: 0.66 },
-    },
-    peak: {
-      cny: { cacheMissInput: 3.0, cacheHitInput: 0.10, output: 9.0 },
-      usd: { cacheMissInput: 0.44, cacheHitInput: 0.014, output: 1.32 },
-    },
+const FLASH_PRICING: ModelPricing = {
+  offPeak: {
+    cny: { cacheMissInput: 1, cacheHitInput: 0.02, output: 4 },
+    usd: { cacheMissInput: 0.15, cacheHitInput: 0.003, output: 0.6 },
   },
+  peak: {
+    cny: { cacheMissInput: 2, cacheHitInput: 0.04, output: 8 },
+    usd: { cacheMissInput: 0.3, cacheHitInput: 0.006, output: 1.2 },
+  },
+}
+
+export const BUILTIN_PRICING: Record<string, ModelPricing> = {
+  'deepseek-flash': FLASH_PRICING,
   'deepseek-v4-pro': {
     offPeak: {
       cny: { cacheMissInput: 4.5, cacheHitInput: 0.15, output: 13.5 },
@@ -58,23 +60,21 @@ export const BUILTIN_PRICING: Record<string, ModelPricing> = {
       usd: { cacheMissInput: 1.32, cacheHitInput: 0.044, output: 3.96 },
     },
   },
-  'deepseek-v4-flash-vision-exp': {
-    offPeak: {
-      cny: { cacheMissInput: 1.5, cacheHitInput: 0.05, output: 4.5 },
-      usd: { cacheMissInput: 0.22, cacheHitInput: 0.007, output: 0.66 },
-    },
-    peak: {
-      cny: { cacheMissInput: 3.0, cacheHitInput: 0.10, output: 9.0 },
-      usd: { cacheMissInput: 0.44, cacheHitInput: 0.014, output: 1.32 },
-    },
-  },
 }
 
-/** 内置表的核验日期（来源：官方定价页中/英文版，2026-08-26 抓取核验）。 */
-export const BUILTIN_VERIFIED_AT = Date.parse('2026-08-26T00:00:00Z')
+/**
+ * 旧模型名兼容：
+ *  - `deepseek-v4-flash` / `deepseek-v4-flash-vision-exp` 已并入 `deepseek-flash`，
+ *    仍按同一价格表解析，避免历史会话突然变成「未定价模型」。
+ */
+BUILTIN_PRICING['deepseek-v4-flash'] = FLASH_PRICING
+BUILTIN_PRICING['deepseek-v4-flash-vision-exp'] = FLASH_PRICING
 
-/** 未收录模型回退：按 deepseek-v4-flash 刊例价估算并标记 ≈。 */
-export const FALLBACK_PRICING: ModelPricing = BUILTIN_PRICING['deepseek-v4-flash']
+/** 内置表的核验日期（来源：官方定价页中/英文版，2026-09-10 抓取核验）。 */
+export const BUILTIN_VERIFIED_AT = Date.parse('2026-09-10T00:00:00Z')
+
+/** 未收录模型回退：按 deepseek-flash 刊例价估算并标记 ≈。 */
+export const FALLBACK_PRICING: ModelPricing = FLASH_PRICING
 
 /** 前缀匹配（如带日期后缀的模型版本）；精确匹配优先。 */
 function matchEntry<T>(table: Record<string, T>, model: string): T | null {
