@@ -281,6 +281,7 @@ test('/pricing route exposes builtin + fallback + models snapshot', async () => 
   assert.equal(body.fallback.pricing.offPeak.usd.output, 0.6)
   assert.equal(body.fallback.pricing.peak.usd.output, 1.2)
   const models = body.models.map((m) => m.model)
+  assert.ok(models.includes('deepseek-flash'))
   assert.ok(models.includes('deepseek-v4-flash'))
   assert.ok(models.includes('deepseek-v4-pro'))
   assert.ok(models.includes('deepseek-v4-flash-vision-exp'))

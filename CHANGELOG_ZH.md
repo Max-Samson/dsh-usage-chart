@@ -3,6 +3,18 @@
 本文件记录本项目所有重要变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。英文版见 [CHANGELOG.md](./CHANGELOG.md)。
 
+## [1.1.5] - 2026-09-12
+
+### 变更与优化
+
+- **同步 DeepSeek 官方最新调价（2026-09-10）与 `deepseek-flash` 适配**——[PR #8](https://github.com/Max-Samson/dsh-usage-chart/pull/8)：
+  - **新增 `deepseek-flash` 官方刊例价**：按 DeepSeek 官方 2026-09-10 最新调价更新内置定价表，`deepseek-flash` 刊例价全面下调：
+    - **空闲时段**（北京时间工作日非高峰与周末全天）：人民币 CNY 1.0 / 0.02 / 4.0 每 1M tokens（未命中输入 / 命中输入 / 输出）；美元 USD 0.15 / 0.003 / 0.6 每 1M tokens。
+    - **高峰时段**（北京时间工作日 09:00–12:00 与 14:00–18:00）：人民币 CNY 2.0 / 0.04 / 8.0 每 1M tokens；美元 USD 0.30 / 0.006 / 1.2 每 1M tokens。
+  - **历史模型标识平滑兼容**：将 `deepseek-v4-flash` 与 `deepseek-v4-flash-vision-exp` 指向 `deepseek-flash` 价格表，确保历史会话在重新加载与折叠时平滑解析，不被判定为未定价模型。
+  - **未收录模型回退**：未收录模型的默认保守估算回退（`FALLBACK_PRICING`）同步切换至新版 `deepseek-flash` 刊例价。
+  - **文档与测试同步**：更新 README 中的 `pricing.json` 自定义配置示例与核验时间戳（`verifiedAt: 1788998400000` 即 2026-09-10）；全量同步 core、pricing、rounds 单测断言与 `BUILTIN_VERIFIED_AT`。
+
 ## [1.1.4] - 2026-09-08
 
 ### 修复

@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). 中文版见 [CHANGELOG_ZH.md](./CHANGELOG_ZH.md).
 
+## [1.1.5] - 2026-09-12
+
+### Changed
+
+- **DeepSeek official pricing update (2026-09-10) & `deepseek-flash` support** — [PR #8](https://github.com/Max-Samson/dsh-usage-chart/pull/8):
+  - **New `deepseek-flash` model pricing**: Updated builtin pricing according to the official DeepSeek pricing table (verified 2026-09-10). The new `deepseek-flash` rates are:
+    - **Off-peak** (Beijing Mon–Fri non-peak & weekends): CNY 1.0 / 0.02 / 4.0 per 1M tokens (cache-miss input / cache-hit input / output); USD 0.15 / 0.003 / 0.6 per 1M tokens.
+    - **Peak** (Beijing Mon–Fri 09:00–12:00 & 14:00–18:00): CNY 2.0 / 0.04 / 8.0 per 1M tokens; USD 0.30 / 0.006 / 1.2 per 1M tokens.
+  - **Backward compatibility for legacy model names**: `deepseek-v4-flash` and `deepseek-v4-flash-vision-exp` are mapped to `deepseek-flash` in `BUILTIN_PRICING` so historical session logs continue resolving without falling back to unknown-model estimates.
+  - **Fallback pricing**: Default unlisted model fallback (`FALLBACK_PRICING`) now points to the new `deepseek-flash` pricing.
+  - **Docs & test synchronization**: Updated custom `pricing.json` example in `README.md` and `README_ZH.md` (`verifiedAt: 1788998400000`), and aligned test cases across `tests/core.test.mjs`, `tests/pricing.test.mjs`, and `tests/rounds.test.mjs` (`BUILTIN_VERIFIED_AT` set to `2026-09-10T00:00:00Z`).
+
 ## [1.1.4] - 2026-09-08
 
 ### Fixed
