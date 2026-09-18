@@ -11,25 +11,27 @@ import { formatMoney } from '../../pricing/calc.ts'
 import { useDisplayCurrency } from '../currency.ts'
 import { getUiCopy, useUiLocale } from '../i18n.ts'
 import { useHistoryRounds } from '../rounds/history.ts'
-import { snapshotNodes, type ConversationSnapshot } from '../snapshot.ts'
+import { useSessionNodes, type ChatNodesHook, type ConversationSnapshot } from '../snapshot.ts'
 
 export interface CostBadgeProps {
   messageId: string | undefined
   /** 会话快照选择器（framework 标准套件）。 */
   useSession: <S>(selector: (s: ConversationSnapshot) => S) => S
+  /** chat 快照选择器（framework 标准套件；0.1.2 起节点列表在这里）。 */
+  useChat?: ChatNodesHook
   /** 投影读取钩子（framework 标准套件；徽章暂不使用，保留签名一致性）。 */
   useProjection: (key: string) => unknown
   sessionId: string
 }
 
 export function CostBadge(props: CostBadgeProps): JSX.Element | null {
-  const { messageId, useSession, sessionId } = props
+  const { messageId, useSession, useChat, sessionId } = props
   const locale = useUiLocale()
   const copy = getUiCopy(locale)
   const { currency } = useDisplayCurrency()
   const [dismissed, setDismissed] = useState(false)
 
-  const nodes = useSession((s) => snapshotNodes(s))
+  const nodes = useSessionNodes(useChat, useSession)
 
   const turn = useMemo(() => {
     if (messageId === undefined) return null

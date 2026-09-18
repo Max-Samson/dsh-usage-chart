@@ -11,13 +11,15 @@ import { useDisplayCurrency } from './currency.ts'
 import { getUiCopy, useUiLocale } from './i18n.ts'
 import { resolveCost, usePricing } from './pricing-api.ts'
 import { useObservedRounds } from './rounds/observed.ts'
-import { snapshotNodes, type ConversationNode, type ConversationSnapshot } from './snapshot.ts'
+import { useSessionNodes, type ChatNodesHook, type ConversationNode, type ConversationSnapshot } from './snapshot.ts'
 import type { ContextBreakdownData } from './diagnose/context.ts'
 import { UsagePanel } from './UsagePanel.tsx'
 
 export interface DockUsageProps {
   /** 会话快照选择器（framework 标准套件）。 */
   useSession: <S>(selector: (s: ConversationSnapshot) => S) => S
+  /** chat 快照选择器（framework 标准套件；0.1.2 起节点列表在这里）。 */
+  useChat?: ChatNodesHook
   /** 投影读取钩子（framework 标准套件）。 */
   useProjection: (key: 'tokenUsage' | 'contextPressure' | 'contextBreakdown') => unknown
   sessionId: string
@@ -51,7 +53,7 @@ function ChartIcon(): JSX.Element {
 }
 
 export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
-  const { useSession, useProjection, sessionId } = props
+  const { useSession, useChat, useProjection, sessionId } = props
   const locale = useUiLocale()
   const copy = getUiCopy(locale)
   const { currency } = useDisplayCurrency()
@@ -64,7 +66,7 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
   const totals = useProjection('tokenUsage') as TokenUsageBuckets | undefined
   const pressure = useProjection('contextPressure') as { pressureTokens?: number; projectedTokens?: number; contextWindow?: number } | undefined
   const breakdown = useProjection('contextBreakdown') as ContextBreakdownData | undefined
-  const nodes = useSession((s) => snapshotNodes(s))
+  const nodes = useSessionNodes(useChat, useSession)
   const model = useMemo(() => deriveModel(nodes), [nodes])
   const pricing = usePricing()
   const observedRounds = useObservedRounds(totals, nodes, pricing.table, currency)
