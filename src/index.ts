@@ -364,7 +364,8 @@ export function apply(ctx: Context, config: Config = {}): void {
   const pricingFile = config.pricingFile?.trim() || defaultPricingFile()
   const fileSource = filePricingSource(pricingFile)
   const resolver = createPricingResolver(fileSource)
-  ctx.effect(() => fileSource.dispose(), 'dsh-usage-chart: pricing file watcher')
+  // 注意返回的是「返回 disposer 的函数」：写成 () => fileSource.dispose() 会在注册时立刻销毁文件源。
+  ctx.effect(() => () => fileSource.dispose(), 'dsh-usage-chart: pricing file watcher')
 
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',

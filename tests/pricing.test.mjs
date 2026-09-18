@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import test from 'node:test'
+import test, { after } from 'node:test'
 
 import {
   BUILTIN_VERIFIED_AT,
@@ -18,6 +18,10 @@ import {
   pricingFor,
   tierAt,
 } from '../lib/index.js'
+
+/** cordis 语义：effect(setup) 立即执行 setup，把返回的 disposer 留到 fiber 销毁时再调用。 */
+const disposers = []
+after(() => { for (const dispose of disposers) if (typeof dispose === 'function') dispose() })
 
 /** 2026-09-10 内置刊例价（双币种 /1M，高峰/空闲）。 */
 const FLASH_OFF_PEAK = {
@@ -264,7 +268,7 @@ function responseRecorder() {
 test('/pricing route exposes builtin + fallback + models snapshot', async () => {
   const routes = new Map()
   apply({
-    effect(setup) { setup() },
+    effect(setup) { disposers.push(setup()) },
     get() { return undefined },
     webServer: { register(route) { routes.set(route.path, route); return () => {} } },
     sessions: { get() { return undefined } },
@@ -285,4 +289,42 @@ test('/pricing route exposes builtin + fallback + models snapshot', async () => 
   assert.ok(models.includes('deepseek-v4-flash'))
   assert.ok(models.includes('deepseek-v4-pro'))
   assert.ok(models.includes('deepseek-v4-flash-vision-exp'))
+})
+
+test('/pricing route serves the user pricing.json override (file source survives startup)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'duc-pricing-'))
+  const pricingFile = join(dir, 'pricing.json')
+  await writeFile(pricingFile, JSON.stringify({
+    models: {
+      'deepseek-flash': {
+        peak: { cny: { cacheMissInput: 19.99, cacheHitInput: 0.04, output: 8 }, usd: { cacheMissInput: 2.99, cacheHitInput: 0.006, output: 1.2 } },
+        offPeak: { cny: { cacheMissInput: 9.99, cacheHitInput: 0.02, output: 4 }, usd: { cacheMissInput: 1.49, cacheHitInput: 0.003, output: 0.6 } },
+      },
+    },
+  }))
+  const routes = new Map()
+  const disposers = []
+  try {
+    apply({
+      // cordis 语义：effect(setup) 立即执行 setup，把返回的 disposer 留到 fiber 销毁时才调用。
+      // 写成 () => source.dispose() 会在这里当场销毁文件源 → 覆盖文件永不生效（本测试即为此回归）。
+      effect(setup) { disposers.push(setup()) },
+      get() { return undefined },
+      webServer: { register(route) { routes.set(route.path, route); return () => {} } },
+      sessions: { get() { return undefined } },
+    }, { pricingFile })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    const recorder = responseRecorder()
+    await routes.get('/dsh-usage-chart/pricing').handler(
+      { method: 'GET', url: '/dsh-usage-chart/pricing', headers: { host: 'localhost:3000' } },
+      recorder,
+    )
+    const flash = JSON.parse(recorder.body).models.find((m) => m.model === 'deepseek-flash')
+    assert.equal(flash.source, 'file')
+    assert.equal(flash.pricing.offPeak.cny.cacheMissInput, 9.99)
+  } finally {
+    for (const dispose of disposers) if (typeof dispose === 'function') dispose()
+    await rm(dir, { recursive: true, force: true })
+  }
 })

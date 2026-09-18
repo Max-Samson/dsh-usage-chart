@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import test from 'node:test'
+import test, { after } from 'node:test'
 
 import {
   DEFAULT_CNY_PER_USD,
@@ -16,6 +16,10 @@ import {
   normalizeCurrency,
 } from '../lib/index.js'
 
+/** cordis 语义：effect(setup) 立即执行 setup，把返回的 disposer 留到 fiber 销毁时再调用。 */
+const disposers = []
+after(() => { for (const dispose of disposers) if (typeof dispose === 'function') dispose() })
+
 function responseRecorder() {
   return {
     headers: {},
@@ -30,7 +34,7 @@ function responseRecorder() {
 function mountedRoutes(events = [], config = {}) {
   const routes = new Map()
   apply({
-    effect(setup) { setup() },
+    effect(setup) { disposers.push(setup()) },
     get() { return undefined },
     webServer: {
       register(route) { routes.set(route.path, route); return () => {} },
@@ -126,7 +130,7 @@ test('mounted Host routes enforce method and browser-origin guards', async () =>
 async function balanceResponse(extraCtx = {}, config = {}) {
   const routes = new Map()
   apply({
-    effect(setup) { setup() },
+    effect(setup) { disposers.push(setup()) },
     get(name) { return name === 'credentials' ? extraCtx.credentials : undefined },
     webServer: { register(route) { routes.set(route.path, route); return () => {} } },
     sessions: { get() { return undefined } },
