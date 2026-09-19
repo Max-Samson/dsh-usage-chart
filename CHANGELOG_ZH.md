@@ -2,6 +2,15 @@
 
 本文件记录本项目所有重要变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。英文版见 [CHANGELOG.md](./CHANGELOG.md)。
+## [1.1.6] - 2026-09-19
+
+### 修复
+
+- **宿主自定义价格文件源生命周期早释问题（`pricing.json` 覆盖与变更监听）**——[PR #10](https://github.com/Max-Samson/dsh-usage-chart/pull/10)：
+  - **修复 `filePricingSource` 启动即被销毁的 Bug**：此前 `ctx.effect(() => fileSource.dispose(), ...)` 在挂载期立即执行了清理调用，导致文件数据源在首次异步读取完成前被截断关闭，致使用户配置的 `pricing.json` 覆盖及变更监听均无法生效。现已修正为返回高阶清理函数 `ctx.effect(() => () => fileSource.dispose(), ...)`，使文件源在 fiber 卸载时才被释放。
+  - **纠正单测 Cordis effect Mock 语义**：在 `tests/core.test.mjs`、`tests/pricing.test.mjs` 与 `tests/rounds.test.mjs` 中对齐 Cordis 真实生命周期契约，在 `after()` 中统一执行清理函数。
+  - **补充端到端回归用例**：新增 `/pricing route serves the user pricing.json override (file source survives startup)`，验证插件挂载自定义 `pricing.json` 时价格覆盖正常生效且来源正确标记为 `file`。
+
 
 ## [1.1.5] - 2026-09-12
 
