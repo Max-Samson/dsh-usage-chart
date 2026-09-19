@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). 中文版见 [CHANGELOG_ZH.md](./CHANGELOG_ZH.md).
 
+## [1.1.6] - 2026-09-19
+
+### Fixed
+
+- **Host pricing file source lifecycle (`pricing.json` override & change watcher)** — [PR #10](https://github.com/Max-Samson/dsh-usage-chart/pull/10):
+  - Fixed premature disposal of `filePricingSource` during plugin registration: `ctx.effect(() => fileSource.dispose(), ...)` called `dispose()` synchronously while building the fiber and registered `undefined` as the cleanup handler, aborting initial asynchronous file loading and disabling the file change watcher. Resolved by returning a disposer function: `ctx.effect(() => () => fileSource.dispose(), ...)`.
+  - Updated test mocks in `tests/core.test.mjs`, `tests/pricing.test.mjs`, and `tests/rounds.test.mjs` to properly track and execute Cordis effect disposers in `after()`.
+  - Added regression test covering the `/pricing` route with user `pricing.json` overrides enabled at startup.
+
 ## [1.1.5] - 2026-09-12
 
 ### Changed

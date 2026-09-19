@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
-import test from 'node:test'
+import test, { after } from 'node:test'
 
 import { apply, foldRounds, foldTurnUsage, tierAt } from '../lib/index.js'
+
+/** cordis 语义：effect(setup) 立即执行 setup，把返回的 disposer 留到 fiber 销毁时再调用。 */
+const disposers = []
+after(() => { for (const dispose of disposers) if (typeof dispose === 'function') dispose() })
+
 
 /** 2026-09-10 内置刊例价（双币种 /1M）：flash 高峰/空闲。 */
 const FLASH_PEAK = {
@@ -206,7 +211,7 @@ test('/usage route returns rounds with cost and timing', async () => {
   ]
   const routes = new Map()
   apply({
-    effect(setup) { setup() },
+    effect(setup) { disposers.push(setup()) },
     get() { return undefined },
     webServer: { register(route) { routes.set(route.path, route); return () => {} } },
     sessions: { get(id) { return id === 'session-test' ? { id, events } : undefined } },
@@ -247,7 +252,7 @@ test('/usage route prefers snapshotEvents() when the new API is present', async 
   ]
   const routes = new Map()
   apply({
-    effect(setup) { setup() },
+    effect(setup) { disposers.push(setup()) },
     get() { return undefined },
     webServer: { register(route) { routes.set(route.path, route); return () => {} } },
     // 有 snapshotEvents、无 events —— 必须走 snapshotEvents() 分支，且绝不触碰 events 属性。
@@ -273,7 +278,7 @@ test('/usage route prefers snapshotEvents() when the new API is present', async 
   const both = { id: 'session-test', events: [], snapshotEvents: () => events }
   const bothRoutes = new Map()
   apply({
-    effect(setup) { setup() },
+    effect(setup) { disposers.push(setup()) },
     get() { return undefined },
     webServer: { register(route) { bothRoutes.set(route.path, route); return () => {} } },
     sessions: { get(id) { return id === 'session-test' ? both : undefined } },
