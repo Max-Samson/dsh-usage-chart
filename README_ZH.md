@@ -30,6 +30,8 @@
 - **会话用量汇总** — 输入（未命中/命中）、输出、缓存命中率、上下文占用（均来自官方 adapter 上报的 `tokenUsage` / `contextPressure` 投影）
 - **上下文构成与压缩诊断（v1.1.0）** — 官方 `contextBreakdown` 投影拆解（系统提示 / 工具定义 / 历史消息 Token 占比与分段条，标注启发式近似）；宿主折叠 `compaction/*` 事件流（哪一轮被压缩、释放了多少 Token、生成摘要花费了多少成本与对应模型）；结合上下文容量占比（≥75% / ≥90%）给出开新会话或精简大文件注入的优化建议
 - **成本估算** — 按官方刊例价（CNY/USD 双币种 /1M tokens，高峰/空闲双时段）估算并标注来源与核验日期；支持用户覆盖 `pricing.json`；未定价模型显式标记「未定价模型」
+- **会话成本按轮汇总（v1.1.7）** — 按每轮实际模型和计费时段累加宿主成本；新轮进行中，指示器和面板共用“已读取历史＋新增 token 的估算”，实时用量暂停更新后刷新宿主历史。两处模型名称采用相同的历史/实时来源顺序。
+- **DSH 0.1.2+ 与皮肤兼容（v1.1.7）** — 新版从独立 `chat` 源读取会话节点，旧版回退到会话快照；皮肤创建 fixed 定位包含块时，展开面板仍贴近指示器。
 - **高峰/空闲时段计费（v1.0.1）** — 官方高峰时段（北京时间周一至周五 09:00–12:00、14:00–18:00，即 UTC 01:00–04:00、06:00–10:00）价格为空闲时段的 2 倍；其余时段及周末全天为空闲时段；每轮成本按轮次开始时刻自动选用对应时段单价（时刻缺失按高峰保守估算）；面板顶部以**红/绿 tag 实时标注当前计费时段**（红=高峰、绿=空闲），每轮解释卡也显示该轮计费时段
 - **双币种官方刊例价（v1.0.1）** — 中文定价页（CNY）与英文定价页（USD）的官方报价同时内置：CNY 显示用人民币报价、USD 显示用美元报价，**不做汇率换算**（与官方账单口径一致）；「刷新汇率」仅更新「1 USD ≈ X CNY」参考注记
 - **多币种成本（v0.3 / v1.0.1）** — 成本区 CNY/USD 一键切换（选择在浏览器记住），指示器、面板、图表与成本徽章全部跟随所选币种
@@ -73,12 +75,12 @@ dsh plugin --profile web add dsh-usage-chart   # 安装并自动登记为 profil
 dsh web --profile web                          # 启动 DSH Web（已在运行时先停止再启动）
 ```
 
-更新（升级到新版本）：pnpm 对已安装的依赖重新 `add` 可能显示 `Already up to date`
+1.1.7 发布后更新：pnpm 对已安装的依赖重新 `add` 可能显示 `Already up to date`
 而不升级，请用**显式版本**（推荐）或**先卸载再安装**：
 
 ```sh
 # 方式①：显式指定目标版本
-dsh plugin --profile web add dsh-usage-chart@1.1.6
+dsh plugin --profile web add dsh-usage-chart@1.1.7
 # 方式②：先移除再重装（回到最新版）
 dsh plugin --profile web remove dsh-usage-chart
 dsh plugin --profile web add dsh-usage-chart
@@ -91,7 +93,7 @@ dsh plugin --profile web add dsh-usage-chart
 
 > ⚠️ **未全局安装 dsh（报 `dsh: command not found` / PowerShell `无法将“dsh”项识别为…`）？
 > 把上面每条 `dsh` 都写成 `npx --yes @deepseek-ai/dsh`**，例如
-> `npx --yes @deepseek-ai/dsh plugin --profile web add dsh-usage-chart@1.1.6`
+> `npx --yes @deepseek-ai/dsh plugin --profile web add dsh-usage-chart@1.1.7`
 > （原因与解法见 [FAQ](#常见问题faq) 第一条）。
 
 ### 方式二：从 GitHub 安装（源码构建）

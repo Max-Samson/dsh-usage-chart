@@ -2,14 +2,18 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). 中文版见 [CHANGELOG_ZH.md](./CHANGELOG_ZH.md).
 
-## [Unreleased]
+## [1.1.7] - 2026-09-24
 
 ### Fixed
 
-- Read conversation nodes from the independent `chat` source on DSH 0.1.2+, with the legacy session snapshot as a fallback. Restore this connection in the dock indicator after the PR #12/#15 merge and cover the component wiring with a regression test.
-- Position the expanded usage panel relative to the nearest fixed-position containing block, including themed docks that apply `backdrop-filter` (PR #14).
-- Sum each round at its own model and billing tier for session cost (PR #15). When live token usage advances beyond the fetched history, add a marked estimate for the new tokens, refresh the authoritative history after a short quiet period, and keep the indicator and panel on the same cost snapshot.
-- Use one model attribution order in the indicator and panel, prefer a current host fold, and avoid subscribing to unrelated session snapshot changes when reading legacy nodes.
+- **DSH 0.1.2+ conversation nodes** — [PR #12](https://github.com/Max-Samson/dsh-usage-chart/pull/12): the dock indicator and assistant cost badges now read `legacy.nodes` from the independent `chat` slot source (`useChat`). Older DSH versions still use the session snapshot's `chat.legacy.nodes` or top-level `nodes`. Both hooks are called in a fixed order to preserve React hook state; the session fallback selects only the node list, avoiding rerenders from unrelated session updates.
+- **Panel placement under themed docks** — [PR #14](https://github.com/Max-Samson/dsh-usage-chart/pull/14): the fixed usage panel converts viewport coordinates to its nearest CSS containing block when a dock or ancestor uses `transform`, `filter`, `backdrop-filter`, containment, or related properties. The follow-up handles borders, the root element, and additional `will-change` values, while ignoring `contain: style`, which does not establish the required containing block.
+- **Session total across models and billing periods** — [PR #15](https://github.com/Max-Samson/dsh-usage-chart/pull/15): the indicator and panel sum the host's per-round CNY/USD costs instead of repricing all session tokens with one model and one current billing tier. This preserves each round's model and peak/off-peak start time. If history is unavailable or a round lacks cost, the client falls back to an estimate from the `/pricing` snapshot.
+- **Merge regression and live-cost synchronization** — commits `9753856` and `cc0963f`: restored PR #12's `useChat` connection in the indicator after PR #15's merge had reverted it and left `ChatNodesHook` unimported. The indicator and panel now share one history result, model attribution, and session cost. When live token usage exceeds the fetched history, they display the sum of fetched rounds plus a marked estimate for only the new tokens, then refresh the host fold after 750 ms of quiet. A panel refresh updates the indicator too; failed history requests can be retried, and stale responses from another session cannot replace the selected session.
+
+### Tests
+
+- Added regression coverage for chat-source priority and legacy fallback, stable selector use, per-round currency sums, stale-history deltas, and the dock indicator's actual component wiring and model/cost display. `npm run verify` passes all 46 tests. A local headless-browser probe also exercised the live-cost transition and matching panel total; a running DSH Web installation should still be smoke-tested before publishing.
 
 ## [1.1.6] - 2026-09-19
 
