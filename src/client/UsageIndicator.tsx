@@ -10,8 +10,10 @@ import { currencySymbol, useBalance } from './balance.ts'
 import { useDisplayCurrency } from './currency.ts'
 import { getUiCopy, useUiLocale } from './i18n.ts'
 import { resolveCost, usePricing } from './pricing-api.ts'
+import { useHistoryRounds } from './rounds/history.ts'
 import { useObservedRounds } from './rounds/observed.ts'
-import { useSessionNodes, type ChatNodesHook, type ConversationNode, type ConversationSnapshot } from './snapshot.ts'
+import { sumRoundCosts, type ChartRound } from './rounds/types.ts'
+import { snapshotNodes, type ConversationNode, type ConversationSnapshot } from './snapshot.ts'
 import type { ContextBreakdownData } from './diagnose/context.ts'
 import { UsagePanel } from './UsagePanel.tsx'
 
@@ -25,6 +27,15 @@ export interface DockUsageProps {
   sessionId: string
   session: ConversationSnapshot
   input: unknown
+}
+
+/** 历史折叠的模型归因：0.1.2+ 的快照节点不带 provenance/requestConfig，用最后一轮校准（面板同口径）。 */
+function lastRoundModel(rounds: readonly ChartRound[]): string | undefined {
+  for (let i = rounds.length - 1; i >= 0; i--) {
+    const model = rounds[i].model
+    if (model !== null && model !== '') return model
+  }
+  return undefined
 }
 
 function deriveModel(nodes: readonly ConversationNode[]): string | undefined {
@@ -83,14 +94,24 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
   const totals = useProjection('tokenUsage') as TokenUsageBuckets | undefined
   const pressure = useProjection('contextPressure') as { pressureTokens?: number; projectedTokens?: number; contextWindow?: number } | undefined
   const breakdown = useProjection('contextBreakdown') as ContextBreakdownData | undefined
-  const nodes = useSessionNodes(useChat, useSession)
-  const model = useMemo(() => deriveModel(nodes), [nodes])
+  const nodes = useSession((s) => snapshotNodes(s))
+  const history = useHistoryRounds(sessionId)
+  const model = useMemo(() => deriveModel(nodes) ?? lastRoundModel(history.rounds), [nodes, history.rounds])
   const pricing = usePricing()
   const observedRounds = useObservedRounds(totals, nodes, pricing.table, currency)
   const { status: balanceStatus, data: balanceData, load: loadBalance } = useBalance(true)
 
   const hasTokens = totals !== undefined && (billedInputTokens(totals) > 0 || totals.outputTokens > 0)
-  const cost = totals !== undefined && pricing.table !== null ? resolveCost(pricing.table, totals, model, Date.now(), currency) : undefined
+  // 会话总计：优先「Σ 各轮成本」（每轮各自的时段与模型，与每轮徽章天然自洽）；
+  // 历史不可用时才退回「当前时段 × 会话总量」的估算。
+  const historyCost = useMemo(
+    () => (history.status === 'ok' ? sumRoundCosts(history.rounds, currency) : null),
+    [history.status, history.rounds, currency],
+  )
+  const estimate = totals !== undefined && pricing.table !== null ? resolveCost(pricing.table, totals, model, Date.now(), currency) : undefined
+  const cost = historyCost !== null
+    ? { total: historyCost.total, estimated: historyCost.estimated }
+    : estimate === undefined ? undefined : { total: estimate.split.total, estimated: estimate.estimated }
   const cacheHit = totals !== undefined ? cacheHitPercent(totals) : null
   const pressurePct = pressurePercent(pressure)
   const breakdownTotal = (breakdown?.systemTokens ?? 0) + (breakdown?.toolsTokens ?? 0) + (breakdown?.messageTokens ?? 0)
@@ -161,7 +182,7 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
     parts.push({ key: 'output', text: `${copy.output} ${formatTokens(totals.outputTokens)}` })
     if (cacheHit !== null) parts.push({ key: 'cache', text: `${copy.cache} ${cacheHit}%` })
   }
-  if (cost !== undefined) parts.push({ key: 'cost', text: `${copy.cost} ${cost.estimated ? '≈' : ''}${formatMoney(cost.split.total, currency)}`, estimated: cost.estimated })
+  if (cost !== undefined) parts.push({ key: 'cost', text: `${copy.cost} ${cost.estimated ? '≈' : ''}${formatMoney(cost.total, currency)}`, estimated: cost.estimated })
   if (model !== undefined) parts.push({ key: 'model', text: model.replace(/^deepseek-/, '') })
 
   const balanceLabel = balanceStatus === 'loading' || (balanceStatus === 'ok' && balance === undefined)

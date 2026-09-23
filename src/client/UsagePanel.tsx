@@ -18,7 +18,7 @@ import { analyzeContext, type ContextBreakdownData } from './diagnose/context.ts
 import { getUiCopy, type UiLocale } from './i18n.ts'
 import { resolvePricing, usePricing } from './pricing-api.ts'
 import { useHistoryRounds } from './rounds/history.ts'
-import type { ChartRound } from './rounds/types.ts'
+import { sumRoundCosts, type ChartRound } from './rounds/types.ts'
 export interface ContextPressureView {
   pressureTokens?: number
   projectedTokens?: number
@@ -99,9 +99,11 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
     if (pricing.table === null) return null
     return resolvePricing(pricing.table, effectiveModel)
   }, [pricing.table, effectiveModel])
-  // 面板汇总成本：按所选币种的官方刊例价、按高峰/空闲时段计费。时段取
-  // 「最近一轮历史的开始时刻」（更贴近实际发生时段；无历史时用当前时刻）。
+  // 面板汇总成本：优先「Σ 各轮成本」（每轮各自的时段与模型，与每轮徽章自洽）；
+  // 历史不可用时退回「会话总量 × 刊例价」，时段取最近一轮开始时刻（无历史用当前时刻）。
   const costSplitTotal = useMemo(() => {
+    const summed = historyRounds !== null ? sumRoundCosts(historyRounds, currency) : null
+    if (summed !== null) return summed
     if (costView === null) return null
     const last = historyRounds !== null && historyRounds.length > 0 ? historyRounds[historyRounds.length - 1] : null
     return costSplitAt(totals, costView.pricing, last?.startedAt ?? Date.now(), currency)
