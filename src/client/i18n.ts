@@ -13,6 +13,7 @@ export interface UiCopy {
   usage: string
   expandUsage: string
   collapseUsage: string
+  dragPanelTitle: string
   retryBalanceTitle: string
   officialBalanceTitle: string
   usageDetails: string
@@ -136,7 +137,7 @@ export interface UiCopy {
 const COPY: Record<UiLocale, UiCopy> = {
   zh: {
     input: '输入', output: '输出', cache: '缓存', cost: '成本', balance: '余额', usage: '用量',
-    expandUsage: '展开用量面板', collapseUsage: '收起用量面板', retryBalanceTitle: '点击重试余额查询', officialBalanceTitle: '余额来自官方接口',
+    expandUsage: '展开用量面板', collapseUsage: '收起用量面板', dragPanelTitle: '拖动可移动面板，双击「用量」复位', retryBalanceTitle: '点击重试余额查询', officialBalanceTitle: '余额来自官方接口',
     usageDetails: '会话用量详情', sessionUsage: '会话用量', billedInput: '计费输入', cacheHit: '缓存命中', contextUsage: '上下文占用', unavailable: '暂无',
     sessionEmpty: '发送消息后，这里会显示当前会话的 Token 用量。',
     costEstimate: '成本估算', inputCost: '输入', outputCost: '输出',
@@ -205,7 +206,7 @@ const COPY: Record<UiLocale, UiCopy> = {
   },
   en: {
     input: 'Input', output: 'Output', cache: 'Cache', cost: 'Cost', balance: 'Balance', usage: 'Usage',
-    expandUsage: 'Expand usage panel', collapseUsage: 'Collapse usage panel', retryBalanceTitle: 'Retry balance query', officialBalanceTitle: 'Balance from the official API',
+    expandUsage: 'Expand usage panel', collapseUsage: 'Collapse usage panel', dragPanelTitle: 'Drag to move the panel; double-click "Usage" to reset', retryBalanceTitle: 'Retry balance query', officialBalanceTitle: 'Balance from the official API',
     usageDetails: 'Session usage details', sessionUsage: 'Session usage', billedInput: 'Billed input', cacheHit: 'Cache hit', contextUsage: 'Context used', unavailable: 'N/A',
     sessionEmpty: 'Token usage will appear after you send a message.',
     costEstimate: 'Estimated cost', inputCost: 'Input', outputCost: 'Output',

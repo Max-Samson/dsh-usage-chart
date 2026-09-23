@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). 中文版见 [CHANGELOG_ZH.md](./CHANGELOG_ZH.md).
 
+## [Unreleased]
+
+### Added
+
+- **The usage panel can be dragged out of the way**: a handle at the top of the panel moves it by pointer drag (the position is stored in `localStorage` and survives reloads); double-clicking the "Usage" button resets it right above the button. Movement is clamped to the nearest fixed-position containing block (so themed docks using `transform`/`backdrop-filter` are handled correctly) and the panel always keeps at least 48px of itself on screen.
+
+### Tests
+
+- New `tests/panel-position.test.mjs`: persistence fallbacks (missing key, broken JSON, non-finite values, no `localStorage`) and boundary clamping (out-of-range offsets, oversized panels never bounce the other way).
+
 ## [1.1.7] - 2026-09-24
 
 ### Fixed
