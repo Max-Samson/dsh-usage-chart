@@ -53,12 +53,13 @@ export type SessionHook = <S>(selector: (snapshot: ConversationSnapshot) => S) =
 
 /** chat 源缺席时的占位实现（保持 Hook 调用顺序稳定）。 */
 const NO_CHAT_NODES: ChatNodesHook = () => undefined
+const EMPTY_NODES: readonly ConversationNode[] = []
 
 /** 从快照取节点列表：优先 chat.legacy.nodes（rc.6 实际路径），回退顶层 nodes。 */
 export function snapshotNodes(snapshot: ConversationSnapshot): readonly ConversationNode[] {
   const legacy = snapshot.chat?.legacy?.nodes
   if (Array.isArray(legacy) && legacy.length > 0) return legacy
-  return Array.isArray(snapshot.nodes) ? snapshot.nodes : []
+  return Array.isArray(snapshot.nodes) ? snapshot.nodes : EMPTY_NODES
 }
 
 /**
@@ -69,6 +70,6 @@ export function useSessionNodes(useChat: ChatNodesHook | undefined, useSession: 
   // 两个 hook 必须无条件按固定顺序调用：任一条路径少调一次会错位后续 hook 状态
   // （症状是 useMemo 的 prevDeps 变成 undefined，报 "reading 'length'"）。
   const fromChat = (useChat ?? NO_CHAT_NODES)((snapshot) => snapshot.legacy?.nodes)
-  const fromSession = useSession((snapshot) => snapshot)
-  return Array.isArray(fromChat) && fromChat.length > 0 ? fromChat as readonly ConversationNode[] : snapshotNodes(fromSession)
+  const fromSession = useSession(snapshotNodes)
+  return Array.isArray(fromChat) && fromChat.length > 0 ? fromChat as readonly ConversationNode[] : fromSession
 }

@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). 中文版见 [CHANGELOG_ZH.md](./CHANGELOG_ZH.md).
 
+## [Unreleased]
+
+### Fixed
+
+- Read conversation nodes from the independent `chat` source on DSH 0.1.2+, with the legacy session snapshot as a fallback. Restore this connection in the dock indicator after the PR #12/#15 merge and cover the component wiring with a regression test.
+- Position the expanded usage panel relative to the nearest fixed-position containing block, including themed docks that apply `backdrop-filter` (PR #14).
+- Sum each round at its own model and billing tier for session cost (PR #15). When live token usage advances beyond the fetched history, add a marked estimate for the new tokens, refresh the authoritative history after a short quiet period, and keep the indicator and panel on the same cost snapshot.
+- Use one model attribution order in the indicator and panel, prefer a current host fold, and avoid subscribing to unrelated session snapshot changes when reading legacy nodes.
+
 ## [1.1.6] - 2026-09-19
 
 ### Fixed

@@ -7,8 +7,8 @@
  * 请求失败时回退到「本页观测」增量（如实标注）。
  */
 import { useEffect, useMemo, useState } from 'react'
-import type { PriceTierId, TokenUsageBuckets } from '../pricing/calc.ts'
-import { billedInputTokens, cacheHitPercent, costSplitAt, formatMoney, formatPricePerM, formatTokens, tierAt } from '../pricing/calc.ts'
+import type { CostSplit, PriceTierId, TokenUsageBuckets } from '../pricing/calc.ts'
+import { billedInputTokens, cacheHitPercent, formatMoney, formatPricePerM, formatTokens, tierAt } from '../pricing/calc.ts'
 import { currencySymbol, type BalanceData, type BalanceStatus } from './balance.ts'
 import { refreshLiveRate, setDisplayCurrency, useDisplayCurrency } from './currency.ts'
 import { RoundBars, type RoundChartMode } from './chart/RoundBars.tsx'
@@ -17,8 +17,8 @@ import { flagAnomalies } from './diagnose/anomaly.ts'
 import { analyzeContext, type ContextBreakdownData } from './diagnose/context.ts'
 import { getUiCopy, type UiLocale } from './i18n.ts'
 import { resolvePricing, usePricing } from './pricing-api.ts'
-import { useHistoryRounds } from './rounds/history.ts'
-import { sumRoundCosts, type ChartRound } from './rounds/types.ts'
+import type { HistoryRounds } from './rounds/history.ts'
+import type { ChartRound } from './rounds/types.ts'
 export interface ContextPressureView {
   pressureTokens?: number
   projectedTokens?: number
@@ -26,10 +26,11 @@ export interface ContextPressureView {
 }
 
 export interface UsagePanelProps {
-  sessionId: string | undefined
+  history: HistoryRounds
   locale: UiLocale
   totals: TokenUsageBuckets
   model: string | undefined
+  costSplitTotal: (CostSplit & { estimated: boolean }) | null
   /** 回退：本页观测的每轮增量（仅当宿主历史不可用时展示）。 */
   observedRounds: readonly ChartRound[]
   pressure: ContextPressureView | undefined
@@ -63,7 +64,7 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
   const [chartMode, setChartMode] = useState<RoundChartMode>('absolute')
   const [rateStatus, setRateStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
   const {
-    sessionId, locale, totals, model, observedRounds, pressure, breakdown,
+    history, locale, totals, model, costSplitTotal, observedRounds, pressure, breakdown,
     balanceStatus: status, balanceData: data, loadBalance: load,
   } = props
   const copy = getUiCopy(locale)
@@ -77,7 +78,6 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
     setRateStatus(result === 'ok' ? 'ok' : 'error')
   }
 
-  const history = useHistoryRounds(sessionId)
   const pricing = usePricing()
 
   const historyRounds = history.status === 'ok' ? history.rounds : null
@@ -87,27 +87,12 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
     () => analyzeContext(pressure, breakdown, history.compactions, currency),
     [pressure, breakdown, history.compactions, currency],
   )
-  // 成本估算：价格唯一输入是 /pricing 快照（ADR 2）；快照不可用则降级提示。
-  // 模型归因优先 host 折叠（ADR 1 权威基准），快照 provenance 推导仅作回退。
-  const hostModel = useMemo(() => {
-    const list = history.status === 'ok' ? history.rounds : []
-    const last = list.length > 0 ? list[list.length - 1] : null
-    return last?.model ?? null
-  }, [history.status, history.rounds])
-  const effectiveModel = hostModel ?? model ?? undefined
+  // 指示器已调停宿主历史与实时节点；面板复用同一模型与成本快照。
+  const effectiveModel = model
   const costView = useMemo(() => {
     if (pricing.table === null) return null
     return resolvePricing(pricing.table, effectiveModel)
   }, [pricing.table, effectiveModel])
-  // 面板汇总成本：优先「Σ 各轮成本」（每轮各自的时段与模型，与每轮徽章自洽）；
-  // 历史不可用时退回「会话总量 × 刊例价」，时段取最近一轮开始时刻（无历史用当前时刻）。
-  const costSplitTotal = useMemo(() => {
-    const summed = historyRounds !== null ? sumRoundCosts(historyRounds, currency) : null
-    if (summed !== null) return summed
-    if (costView === null) return null
-    const last = historyRounds !== null && historyRounds.length > 0 ? historyRounds[historyRounds.length - 1] : null
-    return costSplitAt(totals, costView.pricing, last?.startedAt ?? Date.now(), currency)
-  }, [costView, totals, historyRounds, currency])
   const occupancy = occupancyPercent(pressure)
   const cacheHit = cacheHitPercent(totals)
   const hasTokens = billedInputTokens(totals) > 0 || totals.outputTokens > 0
@@ -255,7 +240,7 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
               onClick={() => void onRefreshRate()}
             >{rateStatus === 'loading' ? copy.refreshingRate : copy.refreshRate}</button>
             <strong className="duc-section-value">
-              {costSplitTotal !== null ? `≈ ${formatMoney(costSplitTotal.total, currency)}` : copy.unavailable}
+              {costSplitTotal !== null ? `${costSplitTotal.estimated ? '≈ ' : ''}${formatMoney(costSplitTotal.total, currency)}` : copy.unavailable}
             </strong>
           </div>
         </div>
@@ -319,7 +304,7 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
                 onClick={() => setChartMode('cost')}
               >{copy.costMode}</button>
             </div>
-            {history.status === 'ok' && (
+            {(history.status === 'ok' || history.status === 'error') && (
               <button type="button" className="duc-refresh" onClick={() => void history.load()}>{copy.refresh}</button>
             )}
           </div>

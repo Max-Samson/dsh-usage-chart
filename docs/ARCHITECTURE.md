@@ -33,7 +33,7 @@ Host 半区（Node）                           Client 半区（浏览器）
 
 **摩擦点（v0.1 记录 → v0.2 处置）**：
 
-1. **两套折叠实现**（host `foldRounds` vs client 观测）：**决策 2 维持独立**——client 观测只服务实时指示器（`rounds/observed.ts`），host 折叠是权威基准（`rounds/history.ts`）；回退标注在面板统一。
+1. **两套折叠实现**（host `foldRounds` vs client 观测）：**决策 2 维持独立**——client 观测服务实时开轮（`rounds/observed.ts`），host 折叠是权威基准（`rounds/history.ts`）；指示器在历史追上投影时使用逐轮成本，否则显示标记为估算的实时成本，面板共用这份汇总。
 2. **两条价格路径会分叉**：✅ **已解决**——`pricing.ts` 拆为 `calc.ts`（纯数学，两半区共享）+ host `source/resolve`；client 唯一价格输入是 `/pricing` 快照（ADR 2），不再内置价格常量。
 3. **模型归因两个来源**：✅ **已收敛**——host `foldRounds` 从 `request/context` 按轮归因（权威）；面板成本解析**优先 host rounds 模型**（ADR 1），快照 provenance 仅作回退。
 4. **派生计算内联在编排根**：✅ **已下沉**——异常判定（`diagnose/anomaly.ts`）、成本解析（`pricing-api.ts`）、图表（`chart/RoundBars.tsx`）均为独立模块，`UsagePanel` 只做编排。
@@ -61,7 +61,7 @@ Host 半区（Node）                           Client 半区（浏览器）
 | 模块 | 接口（小） | 实现（深） | 接缝 / 适配器 |
 |---|---|---|---|
 | **LiveObservation**（`rounds/observed.ts`，= 现有 `useTurnUsage`） | `useObservedRounds(totals, nodes) → { sealed, open }` | 投影 delta 增量观测 + 轮次封存——**指示器专用**，只回答“本页加载以来的增量”，如实标注 | 投影实时路径（见 2.4） |
-| **HistoryFeed**（`rounds/history.ts`，= 现有 `useSessionUsage`） | `useHistoryRounds(sessionId) → { rounds, source: history\|loading\|error }` | 宿主 `/usage` 完整历史折叠 + 失败时回退观测增量的**标注逻辑**——**面板/徽章专用** | 路由历史路径（见 2.4） |
+| **HistoryFeed**（`rounds/history.ts`，= 现有 `useSessionUsage`） | `useHistoryRounds(sessionId) → { rounds, status, totals, load }` | 宿主 `/usage` 完整历史折叠；指示器与面板共享实例，徽章读取同一路由；实时投影变化后去抖刷新 | 路由历史路径（见 2.4） |
 | **RoundBars**（`chart/RoundBars.tsx`） | `{ rounds, mode: absolute\|ratio\|cost, locale } → 图表` | 三种视角堆叠 + 耗时点线叠加 + 异常轮次标记 + 缓存命中迷你趋势 + Tooltip 解释卡；v1.0.0 起**全部轮次**渲染进横向滚动容器（固定细柱宽、自动滚到最新、箭头/渐隐提示越界），零依赖 SVG | 复用现有交互路径（hover/focus/当前轮高亮） |
 | **Anomaly**（`diagnose/anomaly.ts`） | `flag(rounds, { window, threshold }) → { turn, reasons[] }[]` | 相对近 N 轮成本突增判定 + 归因（缓存命中下降/输出增长/上下文膨胀，结合 `endReason`） | 纯函数；图表与徽章共享 |
 | **ContextReport**（`diagnose/context.ts`，v1.1） | `report(pressure, breakdown, compactions) → sections[]` | 组成（官方 `contextBreakdown`）+ 压缩时间线（`compaction/summary`）+ 阈值建议 | 纯函数，喂投影与事件折叠结果 |
@@ -93,10 +93,10 @@ HistoryStore = { appendSample(round), queryRange(from,to) }   // 接口
 
 ### 2.4 数据路径接缝（已存在，显式化）
 
-- **权威历史**：host 路由 `/usage`（RoundFold 折叠完整日志）→ HistoryFeed（面板、徽章）；
+- **权威历史**：host 路由 `/usage`（RoundFold 折叠完整日志）→ HistoryFeed（指示器、面板、徽章）；
 - **实时开轮**：官方投影 `tokenUsage` delta → LiveObservation（指示器，仅本页增量）；
 - **上下文**：官方投影 `contextPressure` / `contextBreakdown` 直接 `useProjection` 消费。
-- 两条路径**不合并**（决策 2）：指示器与面板各用各的、职责独立；`/usage` 是两者唯一共享的宿主出口，host 折叠是权威基准，client 观测只做实时指示。
+- 两条折叠路径仍独立（决策 2）：历史追上投影时采用逐轮成本，投影领先时采用带估算标记的实时成本并刷新历史；指示器与面板共用同一份调停结果，client 观测不替代 host 折叠。
 
 ## 3. 版本落地映射
 
@@ -122,13 +122,13 @@ HistoryStore = { appendSample(round), queryRange(from,to) }   // 接口
 | HistoryStore（v1.2） | memory fake + 临时目录 JSONL 真写读 | 待 v1.2 |
 | HistoryFeed / RoundBars / CostBadge | playwright-core 视觉验证（现有 `scripts/probe-*.mjs` 扩展） | ✅ `scripts/verify-render.mjs` 对运行中 DSH Web 端到端通过 |
 
-> 当前 `npm run verify` 共 39 项测试全绿。
+> 运行 `npm run verify` 检查当前测试数量与结果。
 
 ## 5. ADR 备忘（本设计的决策点）
 
 1. **Host 权威折叠**：客户端投影只服务「实时开轮 + 上下文」，完整历史一律 host 折叠——避免两套折叠各自漂移。
 2. **价格解析只在 host**：client 永不读价格来源文件；`/pricing` 快照是 client 唯一价格输入。
-3. **不建推送通道**：维持「路由读历史 + 投影读实时」两条路径，RoundFeed 单点调停。
+3. **不建推送通道**：维持「路由读历史 + 投影读实时」两条路径，在指示器编排根单点调停成本与模型，并把同一结果交给面板。
 4. **异常判定是共享纯模块**：图表与徽章都要用，不埋在 RoundBars 内部。
 5. **零运行时依赖不破**：所有新图继续零依赖 SVG；不引入图表库。
 

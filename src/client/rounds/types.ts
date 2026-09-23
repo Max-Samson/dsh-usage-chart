@@ -2,7 +2,7 @@
  * client 侧轮次数据形状：host `/usage` 的 wire 格式（权威历史）
  * 与本页观测增量共用同一 ChartRound 形状，图表只认这一个类型。
  */
-import type { CostCurrency, CostSplit, TokenUsageBuckets } from '../../pricing/calc.ts'
+import type { CostSplit, TokenUsageBuckets } from '../../pricing/calc.ts'
 import type { CompactionRecord } from '../../usage/compactions.ts'
 
 /** 每轮成本（来自 host 折叠，官方 CNY/USD 双币种各一份；观测增量路径为 null）。 */
@@ -45,24 +45,3 @@ export interface UsageResponse {
 }
 
 export type UsageStatus = 'idle' | 'loading' | 'ok' | 'error'
-
-/**
- * Σ 各轮成本（权威历史口径：每轮各自的时段与模型），用于会话汇总——
- * 与每轮徽章天然自洽。任一轮缺成本（观测增量路径）或无轮次时返回 null，调用方回退估算。
- */
-export function sumRoundCosts(rounds: readonly ChartRound[], currency: CostCurrency): (CostSplit & { estimated: boolean }) | null {
-  if (rounds.length === 0) return null
-  const sum: CostSplit = { input: 0, cacheRead: 0, output: 0, total: 0 }
-  let estimated = false
-  for (const round of rounds) {
-    const cost = round.cost
-    if (cost === null) return null
-    const split = cost[currency]
-    sum.input += split.input
-    sum.cacheRead += split.cacheRead
-    sum.output += split.output
-    sum.total += split.total
-    estimated ||= cost.estimated
-  }
-  return { ...sum, estimated }
-}
