@@ -13,7 +13,7 @@ import { resolveCost, usePricing } from './pricing-api.ts'
 import { useHistoryRounds } from './rounds/history.ts'
 import { useObservedRounds } from './rounds/observed.ts'
 import { sumRoundCosts, type ChartRound } from './rounds/types.ts'
-import { snapshotNodes, type ConversationNode, type ConversationSnapshot } from './snapshot.ts'
+import { useSessionNodes, type ChatNodesHook, type ConversationNode, type ConversationSnapshot } from './snapshot.ts'
 import type { ContextBreakdownData } from './diagnose/context.ts'
 import { UsagePanel } from './UsagePanel.tsx'
 
@@ -94,7 +94,7 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
   const totals = useProjection('tokenUsage') as TokenUsageBuckets | undefined
   const pressure = useProjection('contextPressure') as { pressureTokens?: number; projectedTokens?: number; contextWindow?: number } | undefined
   const breakdown = useProjection('contextBreakdown') as ContextBreakdownData | undefined
-  const nodes = useSession((s) => snapshotNodes(s))
+  const nodes = useSessionNodes(useChat, useSession)
   const history = useHistoryRounds(sessionId)
   const model = useMemo(() => deriveModel(nodes) ?? lastRoundModel(history.rounds), [nodes, history.rounds])
   const pricing = usePricing()
