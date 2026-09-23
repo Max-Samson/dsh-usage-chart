@@ -20,6 +20,8 @@ import { UsagePanel } from './UsagePanel.tsx'
 export interface DockUsageProps {
   /** 会话快照选择器（framework 标准套件）。 */
   useSession: <S>(selector: (s: ConversationSnapshot) => S) => S
+  /** chat 快照选择器（framework 标准套件；0.1.2 起节点列表在这里）。 */
+  useChat?: ChatNodesHook
   /** 投影读取钩子（framework 标准套件）。 */
   useProjection: (key: 'tokenUsage' | 'contextPressure' | 'contextBreakdown') => unknown
   sessionId: string
@@ -61,8 +63,25 @@ function ChartIcon(): JSX.Element {
   )
 }
 
+/**
+ * fixed 定位的包含块：任一 transform/filter/contain 祖先都会把定位基准从视口改成它自己
+ * （皮肤给 dock 子元素加了 backdrop-filter，面板随之整体偏移）。
+ */
+function containingBlock(start: HTMLElement): Element | null {
+  // 属性可能不存在（旧浏览器）：undefined 一律按「不创建包含块」处理。
+  const creates = (value: string | undefined): boolean => value !== undefined && value !== 'none' && value !== 'normal'
+  for (let node: Element | null = start; node !== null && node !== document.documentElement; node = node.parentElement) {
+    const style = getComputedStyle(node)
+    if (creates(style.transform) || creates(style.translate) || creates(style.rotate) || creates(style.scale)
+      || creates(style.perspective) || creates(style.filter) || creates(style.backdropFilter)
+      || creates(style.contain) || creates(style.containerType)
+      || /transform|perspective|filter/.test(style.willChange)) return node
+  }
+  return null
+}
+
 export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
-  const { useSession, useProjection, sessionId } = props
+  const { useSession, useChat, useProjection, sessionId } = props
   const locale = useUiLocale()
   const copy = getUiCopy(locale)
   const { currency } = useDisplayCurrency()
@@ -110,8 +129,14 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
     if (el === null) return
     const r = el.getBoundingClientRect()
     const width = Math.min(Math.max(r.width, 320), 520, window.innerWidth - 16)
-    const left = Math.min(Math.max(8, r.left), window.innerWidth - width - 8)
-    setAnchor({ left, width, bottom: window.innerHeight - r.top + 8 })
+    const left = Math.min(Math.max(8, r.left), Math.max(8, window.innerWidth - width - 8))
+    // 视口坐标 → 包含块坐标：面板是 fixed，祖先有 transform/filter/contain 时 left/bottom 以它为准。
+    const base = containingBlock(el)?.getBoundingClientRect()
+    setAnchor({
+      left: left - (base?.left ?? 0),
+      width,
+      bottom: (base?.bottom ?? window.innerHeight) - r.top + 8,
+    })
   }, [])
 
   useLayoutEffect(() => {

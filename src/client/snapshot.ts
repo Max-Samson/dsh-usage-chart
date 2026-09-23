@@ -41,9 +41,34 @@ export interface ConversationSnapshot {
   [key: string]: unknown
 }
 
+/** chat 快照（0.1.2+ 会话作用域标准源 'chat' 的形状，只取本插件需要的 legacy 切片）。 */
+export interface ChatSnapshotLike {
+  legacy?: { nodes?: readonly ConversationNode[] }
+}
+
+/** 标准源 hook（槽位套件把 'chat' 源包成 useChat 注入组件 props）。 */
+export type ChatNodesHook = (selector: (snapshot: ChatSnapshotLike) => unknown) => unknown
+
+export type SessionHook = <S>(selector: (snapshot: ConversationSnapshot) => S) => S
+
+/** chat 源缺席时的占位实现（保持 Hook 调用顺序稳定）。 */
+const NO_CHAT_NODES: ChatNodesHook = () => undefined
+
 /** 从快照取节点列表：优先 chat.legacy.nodes（rc.6 实际路径），回退顶层 nodes。 */
 export function snapshotNodes(snapshot: ConversationSnapshot): readonly ConversationNode[] {
   const legacy = snapshot.chat?.legacy?.nodes
   if (Array.isArray(legacy) && legacy.length > 0) return legacy
   return Array.isArray(snapshot.nodes) ? snapshot.nodes : []
+}
+
+/**
+ * 读会话节点：0.1.2 起 chat 快照是独立标准源（props.useChat.legacy.nodes），
+ * 不再挂在会话快照上；会话快照旧路径仅作回退（旧平台）。
+ */
+export function useSessionNodes(useChat: ChatNodesHook | undefined, useSession: SessionHook): readonly ConversationNode[] {
+  // 两个 hook 必须无条件按固定顺序调用：任一条路径少调一次会错位后续 hook 状态
+  // （症状是 useMemo 的 prevDeps 变成 undefined，报 "reading 'length'"）。
+  const fromChat = (useChat ?? NO_CHAT_NODES)((snapshot) => snapshot.legacy?.nodes)
+  const fromSession = useSession((snapshot) => snapshot)
+  return Array.isArray(fromChat) && fromChat.length > 0 ? fromChat as readonly ConversationNode[] : snapshotNodes(fromSession)
 }
