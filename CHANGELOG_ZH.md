@@ -3,6 +3,16 @@
 本文件记录本项目所有重要变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。英文版见 [CHANGELOG.md](./CHANGELOG.md)。
 
+## [未发布]
+
+### 新增
+
+- **用量面板可以拖到不挡内容的位置**：面板顶部新增拖动把手，按住即可挪动（位置写入 `localStorage`，刷新或重启后保持）；双击「用量」按钮复位到按钮正上方。拖动范围按最近的 fixed 定位包含块夹取（皮肤给 dock 加了 `transform`/`backdrop-filter` 时不会被算错），面板四条边至少保留 48px 在可视区内，拖不出屏幕。
+
+### 测试
+
+- 新增 `tests/panel-position.test.mjs`：持久化读取的容错（缺失/坏 JSON/非有限数值/无 `localStorage`）与边界夹取（越界夹取、超大面板不反向顶飞）。
+
 ## [1.1.7] - 2026-09-24
 
 ### 修复

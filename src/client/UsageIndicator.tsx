@@ -3,12 +3,13 @@
  * 一行展示：输入 / 输出 / 缓存命中率 / 成本估算 / 模型 / 余额 + 细上下文压力条，
  * 点击展开可视化面板。成本只消费 /pricing 快照（ADR 2），快照未就绪时隐藏成本位。
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { TokenUsageBuckets } from '../pricing/calc.ts'
 import { billedInputTokens, cacheHitPercent, formatMoney, formatTokens } from '../pricing/calc.ts'
 import { currencySymbol, useBalance } from './balance.ts'
 import { useDisplayCurrency } from './currency.ts'
 import { getUiCopy, useUiLocale } from './i18n.ts'
+import { clampPanelOffset, PANEL_POS_KEY, readPanelOffset, type PanelOffset, type PanelRect } from './panel-position.ts'
 import { resolveCost, usePricing } from './pricing-api.ts'
 import { useHistoryRounds } from './rounds/history.ts'
 import { useObservedRounds } from './rounds/observed.ts'
@@ -82,6 +83,12 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
   const toggleRef = useRef<HTMLButtonElement | null>(null)
   // 悬浮面板的锚点坐标（fixed 定位，始终在可视区内）
   const [anchor, setAnchor] = useState<{ left: number; width: number; bottom: number } | null>(null)
+  // 面板可拖动：偏移叠加在锚点上（transform，不动包含块坐标换算），持久化到 localStorage。
+  const [offset, setOffset] = useState<PanelOffset>(() => readPanelOffset())
+  const offsetRef = useRef(offset)
+  offsetRef.current = offset
+  const panelRef = useRef<HTMLDivElement | null>(null)
+  const dragRef = useRef<{ pointerX: number; pointerY: number; offset: PanelOffset } | null>(null)
 
   const totals = useProjection('tokenUsage') as TokenUsageBuckets | undefined
   const pressure = useProjection('contextPressure') as { pressureTokens?: number; projectedTokens?: number; contextWindow?: number } | undefined
@@ -195,6 +202,76 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
     }
   }, [expanded])
 
+  // 卸载时兜底恢复：拖动中途组件被卸载不该把整页文字设成不可选。
+  useEffect(() => () => { document.body.style.userSelect = '' }, [])
+
+  /** 当前包含块（祖先无 transform/filter/contain 时即视口）的视口矩形。 */
+  const dragBounds = (): PanelRect => {
+    const el = rootRef.current
+    const rect = el === null ? undefined : containingBlock(el)?.getBoundingClientRect()
+    return rect === undefined
+      ? { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight }
+      : { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom }
+  }
+
+  /** 夹取并落盘一个候选偏移（面板矩形扣掉当前偏移 = 未位移基准）。 */
+  const applyOffset = (next: PanelOffset): void => {
+    const panel = panelRef.current
+    let final = next
+    if (panel !== null) {
+      const rect = panel.getBoundingClientRect()
+      const base = {
+        left: rect.left - offsetRef.current.x,
+        top: rect.top - offsetRef.current.y,
+        right: rect.right - offsetRef.current.x,
+        bottom: rect.bottom - offsetRef.current.y,
+      }
+      final = clampPanelOffset(next, base, dragBounds())
+    }
+    offsetRef.current = final // pointermove 是连续的，ref 必须立刻跟上（setState 异步）
+    setOffset(final)
+    try {
+      localStorage.setItem(PANEL_POS_KEY, JSON.stringify(final))
+    } catch {
+      // 隐私模式 / 配额满：位置不持久化，拖动本身照常可用。
+    }
+  }
+
+  /** 双击「用量」复位到按钮正上方（并清掉已存的位置）。 */
+  const clearOffset = (): void => {
+    offsetRef.current = { x: 0, y: 0 }
+    setOffset({ x: 0, y: 0 })
+    try {
+      localStorage.removeItem(PANEL_POS_KEY)
+    } catch {
+      // ignore
+    }
+  }
+
+  const beginDrag = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    if (event.button !== 0) return
+    dragRef.current = { pointerX: event.clientX, pointerY: event.clientY, offset: offsetRef.current }
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    event.preventDefault()
+    document.body.style.userSelect = 'none'
+  }
+
+  const moveDrag = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    const drag = dragRef.current
+    if (drag === null) return
+    applyOffset({
+      x: drag.offset.x + event.clientX - drag.pointerX,
+      y: drag.offset.y + event.clientY - drag.pointerY,
+    })
+  }
+
+  const endDrag = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    if (dragRef.current === null) return
+    dragRef.current = null
+    event.currentTarget.releasePointerCapture?.(event.pointerId)
+    document.body.style.userSelect = ''
+  }
+
   // 全空时保持隐藏（与官方 StatsLine 的零数据策略一致）。
   if (!hasTokens && model === undefined && balanceStatus !== 'ok' && balanceStatus !== 'loading' && !expanded) {
     return null
@@ -228,6 +305,7 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
         aria-expanded={expanded}
         title={expanded ? copy.collapseUsage : copy.expandUsage}
         onClick={toggle}
+        onDoubleClick={clearOffset}
       >
         <ChartIcon />
         <span className="duc-toggle-label">{copy.usage}</span>
@@ -270,8 +348,17 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
       {expanded && anchor !== null && (
         <div
           className="duc-popover"
-          style={{ left: anchor.left, width: anchor.width, bottom: anchor.bottom }}
+          ref={panelRef}
+          style={{ left: anchor.left, width: anchor.width, bottom: anchor.bottom, transform: `translate(${offset.x}px, ${offset.y}px)` }}
         >
+          <div
+            className="duc-popover-handle"
+            title={copy.dragPanelTitle}
+            onPointerDown={beginDrag}
+            onPointerMove={moveDrag}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+          />
           <UsagePanel
             history={history}
             locale={locale}

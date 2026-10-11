@@ -92,6 +92,30 @@ export const PLUGIN_CSS = `
 }
 body[data-ds-dark-theme] .duc-popover { box-shadow: 0 16px 40px rgba(0, 0, 0, 0.42); }
 
+/* 拖动把手：sticky 在面板顶部（面板自身可滚动），横条只是视觉提示。 */
+.duc-popover-handle {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 14px;
+  border-radius: 10px 10px 0 0;
+  background: var(--dsw-alias-bg-layer-2, rgba(30, 31, 34, 0.92));
+  cursor: grab;
+  touch-action: none;
+}
+.duc-popover-handle::before {
+  content: '';
+  display: block;
+  width: 36px;
+  height: 4px;
+  margin: 5px auto 0;
+  border-radius: 2px;
+  background: var(--dsw-alias-border-l3, rgba(127, 127, 127, 0.4));
+}
+.duc-popover-handle:active { cursor: grabbing; }
+
 .duc-panel {
   width: 100%;
   padding: 0 14px;
