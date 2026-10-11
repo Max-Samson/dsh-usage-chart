@@ -3,6 +3,17 @@
 本文件记录本项目所有重要变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。英文版见 [CHANGELOG.md](./CHANGELOG.md)。
 
+## [未发布]
+
+### 修复
+
+- **适配 DSH 0.2.0**——`@deepseek-ai/dsh-client-*` 的 peer 区间原本止于 `<0.2.0`。DSH 启动期的兼容性门禁（`dsh-app-boot` 的 `evaluatePluginCompatibility`，判定时带 `includePrerelease`）因此放行了 `0.2.0-rc.x`，但**会拒绝 `0.2.0` 及其之后的任何版本**。被拒的 bundle 会被整包跳过：指示器、面板和全部五个路由一起消失，只在 `dsh web` 的 stderr 留一行。现区间覆盖两条线——`>=0.1.0-rc.6 <0.2.0 || >=0.2.0-rc.1 <0.3.0`。
+- 从 `peerDependencies` 与 `dsh.client.inject` 中移除 `@deepseek-ai/dsh-client-runtime`：该包在 DSH 0.2.0 已不存在，本插件对它也只有一个构建期即被擦除的 type-only import。同理从客户端 externals 中移除 `@deepseek-ai/dsh-client-web-react` 与 `@deepseek-ai/dsh-client-schema-form`。
+
+### 测试
+
+- 新增 `tests/dsh-compat.test.mjs`：直接调用 DSH 自己的 `evaluatePluginCompatibility`，对本插件的 manifest 跑一组版本矩阵（0.1.x、0.2.0-rc.x，**以及 0.2.0/0.2.1 正式版**），断言未声明支持的 0.3.0 线仍被拒绝，并校验 manifest 点名的每个 DSH 包在目标 DSH 里真实存在。环境里没有 DSH 时跳过（插件自身的 CI 只装插件）。
+
 ## [1.1.7] - 2026-09-24
 
 ### 修复

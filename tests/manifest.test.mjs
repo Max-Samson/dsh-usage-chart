@@ -8,8 +8,11 @@ test('package declares an installable DSH web bundle', () => {
   assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(pkg.dsh.client.platform, 'web')
   assert.ok(pkg.keywords.includes('dsh-plugin'))
-  assert.equal(pkg.peerDependencies['@deepseek-ai/dsh-client-locale'], '>=0.1.0-rc.6 <0.2.0')
-  assert.equal(pkg.peerDependenciesMeta['@deepseek-ai/dsh-client-locale'].optional, true)
+  // 区间语义由 tests/dsh-compat.test.mjs 对着 DSH 自己的门禁校验；这里只锁声明形状。
+  for (const name of ['@deepseek-ai/dsh-client-locale', '@deepseek-ai/dsh-client-ui-conversation', '@deepseek-ai/dsh-client-ui-slots']) {
+    assert.equal(typeof pkg.peerDependencies[name], 'string', name)
+    assert.equal(pkg.peerDependenciesMeta[name].optional, true, name)
+  }
 })
 
 test('all exported runtime and type files exist after build', async () => {

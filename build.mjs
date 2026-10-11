@@ -19,9 +19,9 @@ const tscBin = require.resolve('typescript/bin/tsc')
 
 const PLUGIN_ID = process.env.DSH_PLUGIN_ID ?? 'dsh-usage-chart'
 
-// 与 @deepseek-ai/dsh-client-web/src/platform.ts 的 PLATFORM_MODULES 完全一致
-// + RUNTIME_STORE_EXEMPTION（packages/client/tsdown.client.ts 的 CLIENT_EXTERNALS）。
-// 运行时这些 specifier 由浏览器的模块表（loader）回答，绝不内联。
+// 浏览器模块表（loader）能回答的 specifier，绝不内联。清单已按 DSH 0.2.0-rc.2 核对：
+// 只保留实际存在的包——0.1.x 时代的 dsh-client-runtime / dsh-client-web-react /
+// dsh-client-schema-form 在 0.2.0 已不存在（本包对它们只有 type-only import，esbuild 会擦除）。
 const CLIENT_EXTERNALS = [
   'react',
   'react/jsx-runtime',
@@ -29,11 +29,8 @@ const CLIENT_EXTERNALS = [
   'react-dom/client',
   '@deepseek-ai/cordis',
   '@deepseek-ai/dsh-client-ui-slots',
-  '@deepseek-ai/dsh-client-web-react',
   '@deepseek-ai/dsh-client-ui-primitives',
   '@deepseek-ai/dsh-client-ui-attachment',
-  '@deepseek-ai/dsh-client-schema-form',
-  '@deepseek-ai/dsh-client-runtime/client',
 ]
 
 // A clean output directory prevents stale chunks or declarations from leaking
