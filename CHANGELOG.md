@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). 中文版见 [CHANGELOG_ZH.md](./CHANGELOG_ZH.md).
 
+## [Unreleased]
+
+### Fixed
+
+- **DSH 0.2.0 compatibility** — the `@deepseek-ai/dsh-client-*` peer ranges ended at `<0.2.0`. DSH's own startup gate (`evaluatePluginCompatibility` in `dsh-app-boot`, which matches with `includePrerelease`) therefore accepted `0.2.0-rc.x` but **rejects `0.2.0` and every later version**. An incompatible bundle is skipped whole: the indicator, the panel and all five routes disappear, leaving only one line on `dsh web`'s stderr. The ranges now cover both lines — `>=0.1.0-rc.6 <0.2.0 || >=0.2.0-rc.1 <0.3.0`.
+- Removed `@deepseek-ai/dsh-client-runtime` from `peerDependencies` and from `dsh.client.inject`: the package no longer exists in DSH 0.2.0, and this plugin only ever imported it as a type (erased at build time). `@deepseek-ai/dsh-client-web-react` and `@deepseek-ai/dsh-client-schema-form` were dropped from the client externals for the same reason.
+
+### Tests
+
+- New `tests/dsh-compat.test.mjs`: calls DSH's own `evaluatePluginCompatibility` against this manifest for a version matrix (0.1.x, 0.2.0-rc.x, **and the 0.2.0/0.2.1 releases**), asserts the unsupported 0.3.0 line is still rejected, and checks that every DSH package the manifest names is actually installed in the target DSH. Skips when no DSH is present, since the plugin's CI installs only the plugin.
+
 ## [1.1.7] - 2026-09-24
 
 ### Fixed
