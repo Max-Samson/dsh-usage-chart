@@ -7,7 +7,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CostCurrency, CostSplit, ModelPricing, TokenUsageBuckets } from '../pricing/calc.ts'
-import { costSplitAt } from '../pricing/calc.ts'
+import { costSplitAt, isUnpricedWhenUnknown, matchPricingKey, normalizeModelId, UNPRICED_PRICING } from '../pricing/calc.ts'
 
 export interface PricingEntry {
   pricing: ModelPricing
@@ -71,29 +71,33 @@ export interface ResolvedClientPricing {
   verifiedAt: number | null
   /** 是否显式定价；false = 未定价模型（回退估算）。 */
   known: boolean
+  /** 未定价且不估算（未收录的 Claude 等）：单价全零，成本未计入。 */
+  unpriced: boolean
 }
 
-/** 按快照解析模型价格（精确 → 前缀 → 回退）。 */
+/** 按快照解析模型价格（精确 → 最长前缀 → 回退；未收录 Claude 不回退，标记未定价）。 */
 export function resolvePricing(table: PricingTable, model: string | null | undefined): ResolvedClientPricing {
-  const name = model?.trim().toLowerCase() ?? ''
+  const name = model === null || model === undefined ? '' : normalizeModelId(model)
   if (name !== '') {
-    const direct = table.entries[name]
-    if (direct !== undefined) {
-      return { pricing: direct.pricing, source: direct.source, verifiedAt: direct.verifiedAt, known: true }
+    const key = matchPricingKey(Object.keys(table.entries), name)
+    const entry = key === null ? undefined : table.entries[key]
+    if (entry !== undefined) {
+      return { pricing: entry.pricing, source: entry.source, verifiedAt: entry.verifiedAt, known: true, unpriced: false }
     }
-    for (const [key, entry] of Object.entries(table.entries)) {
-      if (name.startsWith(key)) {
-        return { pricing: entry.pricing, source: entry.source, verifiedAt: entry.verifiedAt, known: true }
-      }
+    // Claude 等非 DeepSeek 模型未收录：不套 DeepSeek 回退价，标记未定价。
+    if (isUnpricedWhenUnknown(name)) {
+      return { pricing: UNPRICED_PRICING, source: 'fallback', verifiedAt: null, known: false, unpriced: true }
     }
   }
-  return { pricing: table.fallback, source: 'fallback', verifiedAt: table.fallbackVerifiedAt, known: false }
+  return { pricing: table.fallback, source: 'fallback', verifiedAt: table.fallbackVerifiedAt, known: false, unpriced: false }
 }
 
 export interface ResolvedClientCost {
   split: CostSplit
   estimated: boolean
   unknownModel: boolean
+  /** 未定价且不估算：split 全零，成本未计入。 */
+  unpriced: boolean
   source: 'file' | 'builtin' | 'fallback'
   verifiedAt: number | null
 }
@@ -115,6 +119,7 @@ export function resolveCost(
     split: costSplitAt(usage, resolved.pricing, at, currency),
     estimated: !resolved.known,
     unknownModel: !resolved.known,
+    unpriced: resolved.unpriced,
     source: resolved.source,
     verifiedAt: resolved.verifiedAt,
   }

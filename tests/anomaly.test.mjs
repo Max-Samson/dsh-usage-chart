@@ -73,3 +73,15 @@ test('flagAnomalies requires nonzero baseline cost', () => {
   const flags = flagAnomalies(rounds)
   assert.equal(flags.length, 0)
 })
+
+test('flagAnomalies ignores unpriced rounds (zero cost must not lower the baseline)', () => {
+  const unpriced = (turn) => {
+    const r = round(turn, { uncachedInputTokens: 1_000, outputTokens: 100, cacheReadTokens: 4_000 }, 0)
+    return { ...r, cost: { ...r.cost, estimated: true, unknownModel: true, unpriced: true, source: 'fallback' } }
+  }
+  const rounds = [baseline(1), baseline(2), unpriced(3), unpriced(4), unpriced(5), baseline(6)]
+  // 窗口=3：若零成本的未定价轮进入基线，第 6 轮（0.001）会对 0 基线判定；跳过后基线仍是 0.001
+  assert.deepEqual(flagAnomalies(rounds, { window: 3 }), [])
+  // 未定价轮本身也不被标记
+  assert.ok(flagAnomalies([baseline(1), unpriced(2)]).every((f) => f.turn !== 2))
+})

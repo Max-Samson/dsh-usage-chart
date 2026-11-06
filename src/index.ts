@@ -34,9 +34,13 @@ export {
   formatPricePerM,
   formatTokens,
   isPeakHour,
+  isUnpricedWhenUnknown,
+  matchPricingKey,
   normalizeCnyPerUsd,
   normalizeCurrency,
+  normalizeModelId,
   tierAt,
+  UNPRICED_PRICING,
 } from './pricing/calc.ts'
 export type {
   BucketPrices,
@@ -59,6 +63,8 @@ import { foldRounds, type SessionEventLike } from './usage/rounds.ts'
 import { foldCompactions } from './usage/compactions.ts'
 
 export {
+  ANTHROPIC_PRICING,
+  ANTHROPIC_VERIFIED_AT,
   BUILTIN_PRICING,
   BUILTIN_VERIFIED_AT,
   FALLBACK_PRICING,

@@ -29,7 +29,7 @@ Click ▸ to open the dashboard panel:
 
 - **Session usage summary** — Input (uncached/cached), output, cache-hit percentage, and context occupancy (derived from official adapter `tokenUsage` / `contextPressure` projections).
 - **Context breakdown & compaction diagnostics (v1.1.0)** — Official `contextBreakdown` projection breakdown (System prompt / Tools schema / Message history token counts and percentage with a 3-segment color bar, annotated as heuristic approximations); Host folds `compaction/*` events (which round was compacted, how many tokens were freed, model used, and summarize call cost); provides proactive suggestions (≥75% / ≥90% occupancy) to start a new session or reduce large file injections.
-- **Cost estimation** — Estimated from official list prices (CNY/USD dual-currency per 1M tokens, peak/off-peak tiers) with verified source date; supports user override via `pricing.json`; unpriced models are explicitly tagged.
+- **Cost estimation** — Estimated from official list prices (CNY/USD dual-currency per 1M tokens, peak/off-peak tiers) with verified source date; supports user override via `pricing.json`; built-in Anthropic Claude official API standard rates (USD); unpriced models are explicitly tagged.
 - **Session-cost aggregation (v1.1.7)** — Adds the host's per-round costs using each round's model and billing tier. While a new round is in progress, the indicator and panel share the fetched history plus a marked estimate for new tokens, then refresh the history after token updates pause. The model label follows the same current-history/live-node priority in both places.
 - **DSH 0.1.2+ and themed docks (v1.1.7)** — Reads conversation nodes from the independent `chat` source on newer DSH versions, with a legacy session-snapshot fallback; keeps the expanded panel anchored when a theme creates a fixed-position containing block.
 - **DSH 0.2.x client-SDK compatibility (v1.1.8)** — Declares client peer ranges spanning both DSH 0.1.x and 0.2.x (tested against 0.2.1-rc.2) so DSH 0.2.x's plugin admission gate accepts the plugin at startup; the retired `@deepseek-ai/dsh-client-runtime` peer is gone, and the assistant-node model identity now also reads the 0.2.x `providerMetadata` field (0.1.x `provenance` still preferred when present, `requestConfig` kept as the last fallback).
@@ -165,11 +165,26 @@ Costs are resolved with priority **user override file > builtin list price > fal
 }
 ```
 
-Unit prices are **dual-currency (CNY + USD) per 1M tokens**: `peak` covers peak hours (Beijing time Monday–Friday 09:00–12:00 and 14:00–18:00, charged at 2×), `offPeak` covers the rest (including weekends). Unpriced models are explicitly marked "Unpriced model" in the UI.
+Unit prices are **dual-currency (CNY + USD) per 1M tokens**: `peak` covers peak hours (Beijing time Monday–Friday 09:00–12:00 and 14:00–18:00, charged at 2×), `offPeak` covers the rest (including weekends). Prices may also carry an optional `cacheWrite` (cache-write rate); when omitted, cache writes are billed at the cache-miss rate.
+
+**Models that are not listed** are explicitly marked "Unpriced model" in the UI:
+
+- DeepSeek models (and a missing model name) are **estimated** at the `deepseek-flash` list price, shown with `≈`;
+- models whose id contains `claude` (including Bedrock ids such as `anthropic.claude-…` and display names such as `Claude Opus 5.5`) are **not estimated**: their rates are zero and their cost is excluded, so they are never billed at DeepSeek rates (which would understate them by tens of times). A session total that includes such rounds is shown as `≥` (a lower bound) with a note in the panel; the cost badge and compaction cost do not show `$0`, and anomaly detection skips these rounds.
+
+#### Claude models
+
+Built-in standard rates from the [Anthropic pricing page](https://platform.claude.com/docs/en/about-claude/pricing) (USD per 1M tokens, verified 2026-11-05) cover Fable 5.1 / 5, Mythos 5.1 / 5, Opus 5.5 / 5 / 4.8 / 4.7 / 4.6 / 4.5 / 4.1 / 4, Sonnet 5.5 / 5 / 4.6 / 4.5 / 4 and Haiku 4.5:
+
+- No peak/off-peak tiers; cache writes use the 5-minute TTL rate (usage cannot distinguish 1-hour TTL writes);
+- Model-id matching normalizes the `anthropic/` prefix and dotted versions (`claude-opus-5.5`); ids with a dated snapshot suffix (`-20261101` / `-latest`) are priced as that model; any other variant (an unlisted newer version, `-fast`, `-batch`, Bedrock ids, …) is treated as unpriced and never borrows a similar model's rate;
+- **Claude Haiku 5.5 is not listed yet**: it is priced by per-request prompt length (≤100K / >100K), which a per-round total cannot determine;
+- Not included: batch discounts, regional / `inference_geo` premiums, Fast mode, tool fees;
+- Anthropic only quotes USD; CNY amounts are converted at a **fixed rate of 6.76** (informational; they do not follow `cnyPerUsd` or the live rate).
 
 ### Display currency and live FX rate (v0.3+ / v1.0.1 official dual-currency)
 
-Costs are computed with the **official list price of the selected currency** (CNY quote from the Chinese pricing page, USD quote from the English pricing page — **no FX conversion**, consistent with the official bill). The cost section has a one-click **CNY/USD** toggle (remembered in the browser); the indicator, panel, chart and badge all follow it. `config.cnyPerUsd` (default 6.76) and the "Refresh rate" button (via Host `/dsh-usage-chart/rate` proxy) are used only for the informational "1 USD ≈ X CNY" note:
+Costs are computed with the **official list price of the selected currency** (CNY quote from the Chinese pricing page, USD quote from the English pricing page — **no FX conversion**, consistent with the official bill; the exception is the USD-only Claude models, whose CNY amounts use the fixed 6.76 rate described above). The cost section has a one-click **CNY/USD** toggle (remembered in the browser); the indicator, panel, chart and badge all follow it. `config.cnyPerUsd` (default 6.76) and the "Refresh rate" button (via Host `/dsh-usage-chart/rate` proxy) are used only for the informational "1 USD ≈ X CNY" note:
 
 - **Multi-source fallback**: when the custom source (`config.fxUrl`) is unreachable, a built-in fallback source (frankfurter.dev) is tried;
 - **Offline resilience**: the last successful rate is persisted, so a refresh while offline keeps the last real rate instead of the fixed default;

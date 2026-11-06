@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). 中文版见 [CHANGELOG_ZH.md](./CHANGELOG_ZH.md).
 
+## [Unreleased]
+
+### Added
+
+- **Claude cost estimation** — built-in Anthropic Claude official API standard rates (USD per 1M tokens, verified 2026-11-05 against https://platform.claude.com/docs/en/about-claude/pricing): Fable 5.1 / 5, Mythos 5.1 / 5, Opus 5.5 / 5 / 4.8 / 4.7 / 4.6 / 4.5 / 4.1 / 4, Sonnet 5.5 / 5 / 4.6 / 4.5 / 4, Haiku 4.5. Flat across peak/off-peak; CNY converted at the fixed 6.76 rate. Claude Haiku 5.5 is intentionally not listed (prompt-length tiered pricing cannot be determined from per-round totals).
+- **Separate cache-write pricing** — `BucketPrices` gains an optional `cacheWrite` rate (5-minute TTL write price for Claude); `pricing.json` accepts it too. When absent, cache writes are still billed at the cache-miss rate (DeepSeek behavior unchanged).
+- **Model-id normalization** — `normalizeModelId` lower-cases, strips the `anthropic/` prefix and rewrites dotted Claude versions (`claude-opus-5.5` → `claude-opus-5-5`); used by the host resolver, `pricing.json` keys and the client snapshot lookup.
+- **Unpriced rounds** — `RoundCost` / `ChartCost` / resolver results gain `unpriced`. Session totals that include unpriced rounds are shown as `≥` (lower bound) with a panel note; the current-model price line is hidden instead of showing `$0/1M`; compaction cost is left blank instead of `$0`.
+
+### Changed
+
+- **Unlisted Claude models are no longer billed at the DeepSeek fallback rate** — any model id containing `claude` (including Bedrock ids such as `anthropic.claude-…` / `us.anthropic.claude-…` and display names) that has no price resolves to zero rates and is marked unpriced, instead of the `deepseek-flash` fallback estimate that understated them by tens of times. DeepSeek models and a missing model name keep the flash fallback. This also changes the exported `pricingFor()` / `estimateCost()`: for such models they now return `UNPRICED_PRICING` / `0` (still `estimated: true`).
+- **Longest-key price matching** — price-key lookup (`matchPricingKey`, shared by builtin, `pricing.json` and the client snapshot) now picks the exact key, else the longest matching prefix regardless of insertion order, so `claude-opus-5-5-20261101` resolves to Opus 5.5 rather than Opus 5. Claude keys only match the exact id or the id plus a dated snapshot suffix (`-YYYYMMDD` / `-latest`), so an unlisted newer version (e.g. `claude-opus-5-6`) is unpriced instead of borrowing a sibling's rate. Non-Claude keys keep the lenient prefix semantics.
+
+### Fixed
+
+- **Anomaly detection** skips unpriced rounds, so their zero cost no longer drags the baseline down and causes later priced rounds to be flagged as spikes.
+
+### Compatibility
+
+- Checked against DSH 0.2.2-rc.1 (installed app bundle): the peer-range admission check passes (`includePrerelease`), the missing `dsh-client-ui-slots` package is skipped by `dsh.client.inject`, both slots and their standard props are unchanged, and the fold handles 0.2.2-rc.1 session logs. DeepSeek model ids and list prices are unchanged (`deepseek-flash` = DeepSeek-V4.1-Flash-1017, `deepseek-v4-pro` = DeepSeek-V4-Pro-0813).
+
 ## [1.1.8] - 2026-10-22
 
 ### Fixed

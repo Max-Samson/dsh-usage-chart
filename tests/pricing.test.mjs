@@ -17,6 +17,13 @@ import {
   isPeakHour,
   pricingFor,
   tierAt,
+  ANTHROPIC_VERIFIED_AT,
+  DEFAULT_CNY_PER_USD,
+  normalizeModelId,
+  matchPricingKey,
+  isUnpricedWhenUnknown,
+  UNPRICED_PRICING,
+  FALLBACK_PRICING,
 } from '../lib/index.js'
 
 /** cordis 语义：effect(setup) 立即执行 setup，把返回的 disposer 留到 fiber 销毁时再调用。 */
@@ -327,4 +334,133 @@ test('/pricing route serves the user pricing.json override (file source survives
     for (const dispose of disposers) if (typeof dispose === 'function') dispose()
     await rm(dir, { recursive: true, force: true })
   }
+})
+
+// ── Anthropic Claude（2026-11-05 官方标准价，USD /1M）─────────────────────────
+// 输入 / 输出 / 5 分钟写缓存 / 缓存命中，逐行对照官方定价页（含 Additional models）。
+const claudeUsd = (input, output, cacheWrite, cacheHit) => ({ cacheMissInput: input, cacheHitInput: cacheHit, output, cacheWrite })
+const CLAUDE_USD = {
+  'claude-fable-5-1': claudeUsd(10, 50, 12.5, 0.25),
+  'claude-opus-5-5': claudeUsd(4, 20, 5, 0.2),
+  'claude-sonnet-5-5': claudeUsd(2, 10, 2.5, 0.1),
+  'claude-mythos-5-1': claudeUsd(10, 50, 12.5, 0.25),
+  'claude-fable-5': claudeUsd(10, 50, 12.5, 1),
+  'claude-mythos-5': claudeUsd(10, 50, 12.5, 1),
+  'claude-opus-5': claudeUsd(5, 25, 6.25, 0.5),
+  'claude-opus-4-8': claudeUsd(5, 25, 6.25, 0.5),
+  'claude-opus-4-7': claudeUsd(5, 25, 6.25, 0.5),
+  'claude-opus-4-6': claudeUsd(5, 25, 6.25, 0.5),
+  'claude-opus-4-5': claudeUsd(5, 25, 6.25, 0.5),
+  'claude-opus-4-1': claudeUsd(15, 75, 18.75, 1.5),
+  'claude-opus-4': claudeUsd(15, 75, 18.75, 1.5),
+  'claude-sonnet-5': claudeUsd(2, 10, 2.5, 0.2),
+  'claude-sonnet-4-6': claudeUsd(3, 15, 3.75, 0.3),
+  'claude-sonnet-4-5': claudeUsd(3, 15, 3.75, 0.3),
+  'claude-sonnet-4': claudeUsd(3, 15, 3.75, 0.3),
+  'claude-haiku-4-5': claudeUsd(1, 5, 1.25, 0.1),
+}
+
+test('builtin includes the official Claude catalog at flat USD rates', () => {
+  const source = builtinPricingSource()
+  for (const [model, usd] of Object.entries(CLAUDE_USD)) {
+    const hit = source.resolve(model)
+    assert.deepEqual(hit.pricing.offPeak.usd, usd, model)
+    assert.deepEqual(hit.pricing.peak.usd, usd, model + ' 不分峰谷')
+    assert.ok(Math.abs(hit.pricing.offPeak.cny.output - usd.output * DEFAULT_CNY_PER_USD) < 1e-9, model + ' CNY 折算')
+    assert.equal(hit.verifiedAt, ANTHROPIC_VERIFIED_AT)
+  }
+  assert.equal(source.resolve('deepseek-flash').verifiedAt, BUILTIN_VERIFIED_AT, 'DeepSeek 核验日期不变')
+})
+
+test('Claude model id aliases resolve to the same entry', () => {
+  assert.equal(normalizeModelId(' Anthropic/Claude-Opus-5.5 '), 'claude-opus-5-5')
+  assert.equal(normalizeModelId('deepseek-v3.2'), 'deepseek-v3.2', '非 Claude 模型保持原样')
+  const resolver = createPricingResolver()
+  for (const alias of ['claude-opus-5-5', 'claude-opus-5.5', 'anthropic/claude-opus-5.5', 'claude-opus-5-5-20261001']) {
+    const r = resolver.resolve(alias)
+    assert.equal(r.known, true, alias)
+    assert.equal(r.source, 'builtin', alias)
+    assert.equal(r.pricing.offPeak.usd.output, 20, alias)
+  }
+  assert.equal(resolver.resolve('claude-sonnet-5.5').pricing.offPeak.usd.cacheHitInput, 0.1)
+  assert.equal(resolver.resolve('claude-fable-5.1').pricing.offPeak.usd.cacheWrite, 12.5)
+})
+
+test('cacheWrite price is billed separately when present, else at cache-miss rate', () => {
+  const usage = { uncachedInputTokens: 1_000_000, cacheReadTokens: 1_000_000, cacheWriteTokens: 1_000_000, outputTokens: 1_000_000 }
+  const opus = createPricingResolver().resolve('claude-opus-5-5').pricing
+  // 4 + 5（写缓存）| 0.2 | 20
+  const split = costSplitAt(usage, opus, Date.UTC(2026, 9, 21, 2), 'usd')
+  assert.ok(Math.abs(split.input - 9) < 1e-9)
+  assert.ok(Math.abs(split.cacheRead - 0.2) < 1e-9)
+  assert.ok(Math.abs(split.output - 20) < 1e-9)
+  assert.ok(Math.abs(split.total - 29.2) < 1e-9)
+  // DeepSeek 无 cacheWrite：仍按未命中价（空闲 flash：1 + 1 | 0.02 | 4 CNY）
+  const flash = costSplitAt(usage, PRICING['deepseek-flash'], Date.UTC(2026, 9, 24, 2), 'cny')
+  assert.ok(Math.abs(flash.input - 2) < 1e-9)
+})
+
+test('pricing.json accepts optional cacheWrite and Claude dotted keys', () => {
+  const entries = parsePricingFile(JSON.stringify({
+    'Claude-Haiku-5.5': { usd: { cacheMissInput: 1, cacheHitInput: 0.1, output: 5, cacheWrite: 1.25 }, cny: { cacheMissInput: 7, cacheHitInput: 0.7, output: 35, cacheWrite: 8.75 } },
+    'bad-write': { cacheMissInput: 1, cacheHitInput: 0.1, output: 5, cacheWrite: -1 },
+  }))
+  assert.equal(entries['claude-haiku-5-5'].peak.usd.cacheWrite, 1.25)
+  assert.equal(entries['claude-haiku-5-5'].peak.cny.cacheWrite, 8.75)
+  assert.equal(entries['bad-write'], undefined, '非法 cacheWrite 条目被跳过')
+})
+
+test('builtin Claude catalog matches the official table exactly (no extra / missing entries)', () => {
+  const claudeKeys = Object.keys(PRICING).filter((k) => k.startsWith('claude-')).sort()
+  assert.deepEqual(claudeKeys, Object.keys(CLAUDE_USD).sort())
+  assert.equal(PRICING['claude-haiku-5-5'], undefined, 'Haiku 5.5 按请求输入长度分档，暂不收录')
+})
+
+test('matchPricingKey picks the longest key regardless of insertion order', () => {
+  const keys = ['claude-opus-5', 'claude-opus-5-5', 'claude-fable-5', 'claude-fable-5-1', 'deepseek-flash', 'deepseek-v4-flash']
+  assert.equal(matchPricingKey(keys, 'claude-opus-5-5-20261101'), 'claude-opus-5-5')
+  assert.equal(matchPricingKey([...keys].reverse(), 'claude-opus-5-5-20261101'), 'claude-opus-5-5')
+  assert.equal(matchPricingKey(keys, 'claude-opus-5-20260601'), 'claude-opus-5')
+  assert.equal(matchPricingKey(keys, 'claude-fable-5-1-latest'), 'claude-fable-5-1')
+  // Claude 键只接受日期快照后缀：未收录的新版本不被静默按旧版本计价
+  assert.equal(matchPricingKey(keys, 'claude-opus-5-6'), null)
+  assert.equal(matchPricingKey(keys, 'claude-opus-5x'), null)
+  // 非 Claude 键保持宽松前缀语义，且同样取最长
+  assert.equal(matchPricingKey(keys, 'deepseek-flash-2026-09-01'), 'deepseek-flash')
+  assert.equal(matchPricingKey(['deepseek-v4', 'deepseek-v4-flash'], 'deepseek-v4-flash-x'), 'deepseek-v4-flash')
+})
+
+test('resolver: dated Claude snapshots hit the right model, not a shorter sibling', () => {
+  const resolver = createPricingResolver()
+  assert.equal(resolver.resolve('claude-opus-5-5-20261101').pricing.offPeak.usd.output, 20)
+  assert.equal(resolver.resolve('claude-opus-5-20260601').pricing.offPeak.usd.output, 25)
+  assert.equal(resolver.resolve('claude-sonnet-5-5-20261001').pricing.offPeak.usd.cacheHitInput, 0.1)
+  assert.equal(resolver.resolve('claude-sonnet-5-20260601').pricing.offPeak.usd.cacheHitInput, 0.2)
+  assert.equal(resolver.resolve('claude-fable-5-1-20261001').pricing.offPeak.usd.cacheHitInput, 0.25)
+  assert.equal(resolver.resolve('claude-opus-4-1-20250805').pricing.offPeak.usd.output, 75)
+  assert.equal(resolver.resolve('claude-opus-4-20250514').pricing.offPeak.usd.output, 75)
+  assert.equal(resolver.resolve('claude-opus-4.8').pricing.offPeak.usd.output, 25)
+})
+
+test('unknown Claude models are unpriced, never billed at the DeepSeek fallback rate', () => {
+  const resolver = createPricingResolver()
+  for (const model of ['claude-haiku-5-5', 'claude-opus-5-6', 'anthropic/claude-new-1.0', 'anthropic.claude-opus-5-5', 'us.anthropic.claude-sonnet-4-5-20250929-v1:0', 'anthropic/claude-opus-5.5-fast', 'Claude Opus 5.5']) {
+    const r = resolver.resolve(model)
+    assert.equal(r.known, false, model)
+    assert.equal(r.source, 'fallback', model)
+    assert.equal(r.pricing, UNPRICED_PRICING, model)
+    assert.equal(r.unpriced, true, model)
+    const split = costSplitAt({ uncachedInputTokens: 1e6, cacheReadTokens: 1e6, cacheWriteTokens: 1e6, outputTokens: 1e6 }, r.pricing, null, 'usd')
+    assert.equal(split.total, 0, model)
+  }
+  assert.equal(pricingFor('claude-haiku-5-5').pricing, UNPRICED_PRICING)
+  assert.equal(pricingFor('claude-haiku-5-5').estimated, true)
+  // DeepSeek 系 / 模型名缺失仍按 flash 回退价估算（行为不变）
+  assert.equal(resolver.resolve('deepseek-v9').pricing, FALLBACK_PRICING)
+  assert.equal(resolver.resolve('deepseek-v9').unpriced, false)
+  assert.equal(resolver.resolve('claude-opus-5-5').unpriced, false)
+  assert.equal(resolver.resolve(null).pricing, FALLBACK_PRICING)
+  assert.equal(isUnpricedWhenUnknown('claude-x'), true)
+  assert.equal(isUnpricedWhenUnknown('anthropic.claude-opus-5-5'), true, 'Bedrock 写法')
+  assert.equal(isUnpricedWhenUnknown('deepseek-x'), false)
 })

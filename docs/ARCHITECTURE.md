@@ -57,7 +57,7 @@ Client 半区（浏览器）：src/client/
 | 模块 | 接口（小） | 实现（深） | 接缝 / 适配器 |
 |---|---|---|---|
 | **RoundFold**（`usage/rounds.ts`） | `foldRounds(events) → { totals, rounds }`，`Round = { turn, buckets, model, startedAt, endedAt, durationMs, ttftMs, outputTps, endReason, userSource, cost }` | 四桶 + 轮次耗时/来源/模型/成本；0.2.x 读取 message/attempt 的 usage 与 stream，TTFT 取首 token，TPS 分母为各次流式生成时长之和；旧日志保留 chunk/usage 回退（详见 2.5） | 纯函数，无 IO；测试喂合成事件流 |
-| **PricingResolver**（`pricing/resolve.ts`） | `resolve(model) → { pricing, source, verifiedAt, estimated, known }` | 优先级解析（覆盖>内置>回退）、峰谷时段、未知模型标记、来源/时效标注 | **接缝：PricingSource**（见 2.3） |
+| **PricingResolver**（`pricing/resolve.ts`） | `resolve(model) → { pricing, source, verifiedAt, estimated, known, unpriced }` | 优先级解析（覆盖>内置>回退）、峰谷时段、未知模型标记、来源/时效标注；键匹配走 `matchPricingKey`（精确 > 最长前缀，Claude 仅接受日期快照后缀）；未收录的 Claude 不套 DeepSeek 回退价（`unpriced`，单价全零） | **接缝：PricingSource**（见 2.3） |
 | **PricingCalc**（`pricing/calc.ts`） | `estimateCost / formatTokens / buckets 数学` | 纯共享计算，两个半区 bundle 同一份 | 无 IO；不解析来源 |
 | **HostRoutes**（`src/index.ts`） | 注册 `/usage` `/balance` `/pricing` `/meta` `/rate` | 编排 RoundFold + PricingResolver + 安全守卫（沿用 `isTrustedRequest`） | 适配器：`webServer` 接缝 |
 | **HistoryStore**（`history/store.ts`，v1.2） | `appendSample(round)` / `queryRange(from, to) → rows` | 聚合/按天落盘、索引、一键清除、导出 | **接缝：历史存储**（2.3） |

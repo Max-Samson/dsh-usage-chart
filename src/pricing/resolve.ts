@@ -5,7 +5,7 @@
  * 未知模型不静默按 0 计——`unknown: true` 显式标记，UI 显示「未定价模型」。
  */
 import type { CostSplit, ModelPricing, TokenUsageBuckets } from './calc.ts'
-import { costSplitAt } from './calc.ts'
+import { costSplitAt, isUnpricedWhenUnknown, normalizeModelId, UNPRICED_PRICING } from './calc.ts'
 import { builtinPricingSource, FALLBACK_PRICING, type PricingSource } from './source.ts'
 
 /** 解析结果：定价 + 来源 + 时效 + 是否显式收录。 */
@@ -19,6 +19,11 @@ export interface ResolvedPricing {
   known: boolean
   /** 是否使用了回退估算（未知模型）。 */
   estimated: boolean
+  /**
+   * 是否「未定价、不估算」：未收录的 Claude 等非 DeepSeek 模型，单价全零，
+   * 成本未计入（区别于按 deepseek-flash 回退价估算的 DeepSeek 未知模型）。
+   */
+  unpriced: boolean
 }
 
 /** 解析器接口（接缝消费方只依赖它）。 */
@@ -29,13 +34,19 @@ export interface PricingResolver {
   list(): Array<{ model: string; pricing: ModelPricing; source: 'file' | 'builtin'; verifiedAt: number | null }>
 }
 
-function fallbackResult(): ResolvedPricing {
+/**
+ * 未收录回退。DeepSeek（及模型名缺失）按 deepseek-flash 价估算；Claude 等
+ * 非 DeepSeek 模型不套 DeepSeek 价（会严重低估），返回全零单价 + 未定价标记。
+ */
+function fallbackResult(normalized = ''): ResolvedPricing {
+  const unpriced = isUnpricedWhenUnknown(normalized)
   return {
-    pricing: FALLBACK_PRICING,
+    pricing: unpriced ? UNPRICED_PRICING : FALLBACK_PRICING,
     source: 'fallback',
     verifiedAt: null,
     known: false,
     estimated: true,
+    unpriced,
   }
 }
 
@@ -49,7 +60,7 @@ export function createPricingResolver(file?: PricingSource | null): PricingResol
 
   const resolve = (model: string | null | undefined): ResolvedPricing => {
     if (model === null || model === undefined) return fallbackResult()
-    const normalized = model.trim().toLowerCase()
+    const normalized = normalizeModelId(model)
     if (normalized === '') return fallbackResult()
     for (const source of sources) {
       const hit = source.resolve(normalized)
@@ -60,10 +71,11 @@ export function createPricingResolver(file?: PricingSource | null): PricingResol
           verifiedAt: hit.verifiedAt,
           known: true,
           estimated: false,
+          unpriced: false,
         }
       }
     }
-    return fallbackResult()
+    return fallbackResult(normalized)
   }
 
   const list = (): Array<{ model: string; pricing: ModelPricing; source: 'file' | 'builtin'; verifiedAt: number | null }> => {
@@ -72,7 +84,7 @@ export function createPricingResolver(file?: PricingSource | null): PricingResol
       for (const model of source.knownModels()) {
         const hit = source.resolve(model)
         if (hit.pricing === null) continue
-        const key = model.trim().toLowerCase()
+        const key = normalizeModelId(model)
         if (!table.has(key)) {
           table.set(key, { pricing: hit.pricing, source: source.id, verifiedAt: hit.verifiedAt })
         }
@@ -93,9 +105,10 @@ const builtinOnly = builtinPricingSource()
 
 /** 取某模型定价；未收录时返回回退价，并标记为估算（v0.1 兼容）。 */
 export function pricingFor(model: string | undefined): { pricing: ModelPricing; estimated: boolean } {
-  const resolved = model === undefined || model.trim() === '' ? null : builtinOnly.resolve(model.trim().toLowerCase())
+  const normalized = model === undefined ? '' : normalizeModelId(model)
+  const resolved = normalized === '' ? null : builtinOnly.resolve(normalized)
   if (resolved === null || resolved.pricing === null) {
-    return { pricing: FALLBACK_PRICING, estimated: true }
+    return { pricing: isUnpricedWhenUnknown(normalized) ? UNPRICED_PRICING : FALLBACK_PRICING, estimated: true }
   }
   return { pricing: resolved.pricing, estimated: false }
 }

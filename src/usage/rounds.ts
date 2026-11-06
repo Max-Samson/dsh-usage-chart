@@ -55,6 +55,8 @@ export interface RoundCost {
   estimated: boolean
   /** 模型是否被显式定价；false = 未定价模型。 */
   unknownModel: boolean
+  /** 未定价且不估算（未收录的 Claude 等）：cny/usd 全零，成本未计入。 */
+  unpriced: boolean
   /** 价格命中来源。 */
   source: 'file' | 'builtin' | 'fallback'
   /** 条目核验时间（epoch 毫秒），未知为 null。 */
@@ -442,6 +444,7 @@ export function foldRounds(events: readonly SessionEventLike[], resolvePricing?:
       usd,
       estimated: resolved.estimated,
       unknownModel: !resolved.known,
+      unpriced: resolved.unpriced,
       source: resolved.source,
       verifiedAt: resolved.verifiedAt,
     }

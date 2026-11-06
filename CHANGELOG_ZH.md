@@ -3,6 +3,28 @@
 本文件记录本项目所有重要变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。英文版见 [CHANGELOG.md](./CHANGELOG.md)。
 
+## [未发布]
+
+### 新增
+
+- **Claude 成本估算**——内置 Anthropic Claude 官方 API 标准价（美元 / 1M tokens，2026-11-05 对照 https://platform.claude.com/docs/en/about-claude/pricing 核验）：Fable 5.1 / 5、Mythos 5.1 / 5、Opus 5.5 / 5 / 4.8 / 4.7 / 4.6 / 4.5 / 4.1 / 4、Sonnet 5.5 / 5 / 4.6 / 4.5 / 4、Haiku 4.5。不分高峰/空闲；人民币按固定汇率 6.76 折算。Claude Haiku 5.5 暂不收录（按请求输入长度分档，按轮汇总无法判定档位）。
+- **写缓存单独计价**——`BucketPrices` 新增可选 `cacheWrite`（Claude 取 5 分钟 TTL 写入价），`pricing.json` 同样支持；缺省时写缓存仍按「缓存未命中」价计（DeepSeek 行为不变）。
+- **模型 ID 归一化**——`normalizeModelId` 转小写、去掉 `anthropic/` 前缀、把 Claude 点号版本改为连字符（`claude-opus-5.5` → `claude-opus-5-5`）；宿主解析、`pricing.json` 键与 client 快照查找共用。
+- **未定价轮次**——`RoundCost` / `ChartCost` / 解析结果新增 `unpriced`。会话合计含未定价轮次时显示为 `≥`（下限）并在面板提示；当前模型未定价时不再显示「$0/1M」刊例价行；压缩成本留空而非显示 `$0`。
+
+### 变更
+
+- **未收录的 Claude 模型不再按 DeepSeek 回退价估算**——型号名含 `claude` 且未定价的模型（含 Bedrock 写法 `anthropic.claude-…` / `us.anthropic.claude-…` 与显示名）解析为全零单价并标记未定价，不再套用会低估数十倍的 `deepseek-flash` 回退价；DeepSeek 系列与模型名缺失仍按 flash 回退估算。导出的 `pricingFor()` / `estimateCost()` 随之变化：此类模型现返回 `UNPRICED_PRICING` / `0`（仍为 `estimated: true`）。
+- **价格键最长匹配**——价格键查找（`matchPricingKey`，内置表、`pricing.json` 与 client 快照共用）改为精确优先、其次最长前缀，与键的插入顺序无关：`claude-opus-5-5-20261101` 命中 Opus 5.5 而非 Opus 5。Claude 键只接受精确 ID 或「ID + 日期快照后缀」（`-YYYYMMDD` / `-latest`），未收录的新版本（如 `claude-opus-5-6`）显示为未定价，不借用相近型号的价格；非 Claude 键保持宽松前缀语义。
+
+### 修复
+
+- **成本异常检测**跳过未定价轮次，其零成本不再拉低基线、导致后续正常计价的轮次被误报为突增。
+
+### 兼容性
+
+- 对照已安装的 DSH 0.2.2-rc.1 应用包检查：peer 范围准入通过（`includePrerelease`）；`dsh.client.inject` 中已不存在的 `dsh-client-ui-slots` 会被跳过；两个槽位及其标准 props 未变；fold 能处理 0.2.2-rc.1 会话日志。DeepSeek 模型 ID 与刊例价未变（`deepseek-flash` = DeepSeek-V4.1-Flash-1017，`deepseek-v4-pro` = DeepSeek-V4-Pro-0813）。
+
 ## [1.1.8] - 2026-10-22
 
 ### 修复

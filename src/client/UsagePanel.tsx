@@ -7,7 +7,7 @@
  * 请求失败时回退到「本页观测」增量（如实标注）。
  */
 import { useEffect, useMemo, useState } from 'react'
-import type { CostSplit, PriceTierId, TokenUsageBuckets } from '../pricing/calc.ts'
+import type { PriceTierId, TokenUsageBuckets } from '../pricing/calc.ts'
 import { billedInputTokens, cacheHitPercent, formatMoney, formatPricePerM, formatTokens, tierAt } from '../pricing/calc.ts'
 import { currencySymbol, type BalanceData, type BalanceStatus } from './balance.ts'
 import { refreshLiveRate, setDisplayCurrency, useDisplayCurrency } from './currency.ts'
@@ -18,6 +18,7 @@ import { analyzeContext, type ContextBreakdownData } from './diagnose/context.ts
 import { getUiCopy, type UiLocale } from './i18n.ts'
 import { resolvePricing, usePricing } from './pricing-api.ts'
 import type { HistoryRounds } from './rounds/history.ts'
+import { costTotalPrefix, type CostTotal } from './rounds/summary.ts'
 import type { ChartRound } from './rounds/types.ts'
 export interface ContextPressureView {
   pressureTokens?: number
@@ -30,7 +31,7 @@ export interface UsagePanelProps {
   locale: UiLocale
   totals: TokenUsageBuckets
   model: string | undefined
-  costSplitTotal: (CostSplit & { estimated: boolean }) | null
+  costSplitTotal: CostTotal | null
   /** 回退：本页观测的每轮增量（仅当宿主历史不可用时展示）。 */
   observedRounds: readonly ChartRound[]
   pressure: ContextPressureView | undefined
@@ -240,7 +241,7 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
               onClick={() => void onRefreshRate()}
             >{rateStatus === 'loading' ? copy.refreshingRate : copy.refreshRate}</button>
             <strong className="duc-section-value">
-              {costSplitTotal !== null ? `${costSplitTotal.estimated ? '≈ ' : ''}${formatMoney(costSplitTotal.total, currency)}` : copy.unavailable}
+              {costSplitTotal !== null ? [costTotalPrefix(costSplitTotal), formatMoney(costSplitTotal.total, currency)].filter(Boolean).join(' ') : copy.unavailable}
             </strong>
           </div>
         </div>
@@ -257,7 +258,8 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
               ]}
             />
             <div className="duc-note">
-              {copy.pricingNote(
+              {/* 当前模型未定价（如未收录的 Claude）时单价全零，不展示「$0/1M」刊例价行。 */}
+              {!costView.unpriced && copy.pricingNote(
                 `${formatPricePerM(costView.pricing.offPeak[currency].cacheMissInput, currency)}/${formatPricePerM(costView.pricing.peak[currency].cacheMissInput, currency)}`,
                 `${formatPricePerM(costView.pricing.offPeak[currency].cacheHitInput, currency)}/${formatPricePerM(costView.pricing.peak[currency].cacheHitInput, currency)}`,
                 `${formatPricePerM(costView.pricing.offPeak[currency].output, currency)}/${formatPricePerM(costView.pricing.peak[currency].output, currency)}`,
@@ -269,6 +271,7 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
                 <><span className="duc-unknown-chip">{copy.unknownModel}</span> {model}</>
               )}
             </div>
+            {costSplitTotal.unpriced && <div className="duc-note">{copy.unpricedExcluded}</div>}
             {currency === 'cny' && rateStatus !== 'idle' && (
               <div className="duc-note">{rateStatus === 'ok'
                 ? copy.rateLive(cnyPerUsd, new Date(rateFetchedAt ?? Date.now()).toLocaleTimeString())
