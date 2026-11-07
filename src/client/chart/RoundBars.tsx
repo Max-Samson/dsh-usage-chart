@@ -84,6 +84,17 @@ function formatTotal(value: number, mode: RoundChartMode, currency: CostCurrency
   return mode === 'cost' ? formatMoney(value, currency) : formatTokens(value)
 }
 
+/** 未定价轮次（未收录的 Claude 等）：cny/usd 全零只是占位，不能当作「$0」展示。 */
+function isUnpriced(round: ChartRound): boolean {
+  return round.cost !== null && round.cost.unpriced === true
+}
+
+/** 该轮在本视角下的总量文本；成本视角下未定价轮次显示「未定价」而非 0。 */
+function roundTotalText(copy: UiCopy, round: ChartRound, mode: RoundChartMode, currency: CostCurrency): string {
+  if (mode === 'cost' && isUnpriced(round)) return copy.unpricedMark
+  return formatTotal(roundTotal(round, mode, currency), mode, currency)
+}
+
 function clamp(value: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, value))
 }
@@ -214,7 +225,7 @@ export function RoundBars({
             const isCurrent = i === n - 1
             const flag = flagByTurn.get(round.turn)
             const hit = cacheHitPercent(round.buckets)
-            const totalText = formatTotal(rawTotal, mode, currency)
+            const totalText = roundTotalText(copy, round, mode, currency)
             // 值标签策略：当前轮始终显示；成本视角每一轮都显示（仅省略过长文本，
             // 费用数据逐轮可见）；其余视角在可滚动（密集）时省略非当前轮，
             // 数值随时在 Tooltip 里。
@@ -262,7 +273,7 @@ export function RoundBars({
                   </rect>
                 )}
                 {showValue && (
-                  <text className="duc-chart-value" x={x + BAR_WIDTH / 2} y={valueY} textAnchor="middle">
+                  <text className={`duc-chart-value${mode === 'cost' && isUnpriced(round) ? ' duc-chart-value-unpriced' : ''}`} x={x + BAR_WIDTH / 2} y={valueY} textAnchor="middle">
                     {totalText}
                   </text>
                 )}
@@ -336,7 +347,7 @@ export function RoundBars({
         >
           <div className="duc-chart-tooltip-head">
             <strong>{copy.roundTitle(activeRound.turn, activeIsCurrent)}</strong>
-            <b>{formatTotal(roundTotal(activeRound, mode, currency), mode, currency)}</b>
+            <b>{roundTotalText(copy, activeRound, mode, currency)}</b>
           </div>
           <div className="duc-chart-tooltip-grid">
             {activeParts.map((part) => (
@@ -352,7 +363,9 @@ export function RoundBars({
           </div>
           <div className="duc-chart-tooltip-meta">
             {mode !== 'cost' && activeRound.cost !== null && (
-              <span><em>{copy.costLabel}</em><b>{formatMoney(activeRound.cost[currency].total, currency)}{activeRound.cost.estimated ? ` ${copy.estimatedMark}` : ''}</b></span>
+              <span><em>{copy.costLabel}</em><b>{isUnpriced(activeRound)
+                ? copy.unpricedMark
+                : `${formatMoney(activeRound.cost[currency].total, currency)}${activeRound.cost.estimated ? ` ${copy.estimatedMark}` : ''}`}</b></span>
             )}
             {activeRound.model !== null && <span><em>{copy.modelLabel}</em><b>{activeRound.model.replace(/^deepseek-/, '')}</b></span>}
             <span><em>{copy.tierLabel}</em><b>{copy.tiers[tierAt(activeRound.startedAt ?? undefined)]}</b></span>
