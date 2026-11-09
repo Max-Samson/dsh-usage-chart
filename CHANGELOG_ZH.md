@@ -3,11 +3,11 @@
 本文件记录本项目所有重要变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。英文版见 [CHANGELOG.md](./CHANGELOG.md)。
 
-## [未发布]
+## [1.1.9] - 2026-11-10
 
 ### 新增
 
-- **Claude 成本估算**——内置 Anthropic Claude 官方 API 标准价（美元 / 1M tokens，2026-11-05 对照 https://platform.claude.com/docs/en/about-claude/pricing 核验）：Fable 5.1 / 5、Mythos 5.1 / 5、Opus 5.5 / 5 / 4.8 / 4.7 / 4.6 / 4.5 / 4.1 / 4、Sonnet 5.5 / 5 / 4.6 / 4.5 / 4、Haiku 4.5。不分高峰/空闲；人民币按固定汇率 6.76 折算。Claude Haiku 5.5 暂不收录（按请求输入长度分档，按轮汇总无法判定档位）。
+- **Claude 成本估算**——内置 Anthropic Claude 官方 API 标准价（美元 / 1M tokens，2026-11-05 对照 https://platform.claude.com/docs/en/about-claude/pricing 核验）：Fable 5.1 / 5、Mythos 5.1 / 5、Opus 5.5 / 5 / 4.8 / 4.7 / 4.6 / 4.5 / 4.1 / 4、Sonnet 5.5 / 5 / 4.6 / 4.5 / 4、Haiku 4.5。不分高峰/空闲；人民币按统一展示汇率折算（配置／默认值、上次成功值或手动刷新）。Claude Haiku 5.5 暂不收录（按请求输入长度分档，按轮汇总无法判定档位）。
 - **写缓存单独计价**——`BucketPrices` 新增可选 `cacheWrite`（Claude 取 5 分钟 TTL 写入价），`pricing.json` 同样支持；缺省时写缓存仍按「缓存未命中」价计（DeepSeek 行为不变）。
 - **模型 ID 归一化**——`normalizeModelId` 转小写、去掉 `anthropic/` 前缀、把 Claude 点号版本改为连字符（`claude-opus-5.5` → `claude-opus-5-5`）；宿主解析、`pricing.json` 键与 client 快照查找共用。
 - **未定价轮次**——`RoundCost` / `ChartCost` / 解析结果新增 `unpriced`。会话合计含未定价轮次时显示为 `≥`（下限）并在面板提示；当前模型未定价时不再显示「$0/1M」刊例价行；压缩成本留空而非显示 `$0`。
@@ -19,11 +19,22 @@
 
 ### 修复
 
+- **宿主／客户端价格一致性**——两侧统一先选来源、再做精确／最长前缀匹配；用户文件前缀覆盖优先于内置精确键。
+- **成本分项完整性**——面板分项与比例条补齐缓存命中费用，窄屏允许换行。
+- **统一汇率估值**——Claude、仅 USD 的覆盖及旧人民币单币种条目保留原币种标记，共用同一个已校验的展示汇率；显式双币种原价不变。刷新同步重算历史、压缩、实时估算及徽章；历史请求按会话与汇率去重并防止旧响应覆盖。恢复上次汇率不再阻止配置币种初始化。
+- **定价说明**——面板解释实际换算口径、独立写缓存价及内置 Claude 的 5 分钟 TTL／标准价边界，不再暗示使用了无关的实时汇率。
 - **成本异常检测**跳过未定价轮次，其零成本不再拉低基线、导致后续正常计价的轮次被误报为突增。
 
 ### 兼容性
 
-- 对照已安装的 DSH 0.2.2-rc.1 应用包检查：peer 范围准入通过（`includePrerelease`）；`dsh.client.inject` 中已不存在的 `dsh-client-ui-slots` 会被跳过；两个槽位及其标准 props 未变；fold 能处理 0.2.2-rc.1 会话日志。DeepSeek 模型 ID 与刊例价未变（`deepseek-flash` = DeepSeek-V4.1-Flash-1017，`deepseek-v4-pro` = DeepSeek-V4-Pro-0813）。
+- Claude PR 作者报告了已安装 DSH 0.2.2-rc.1 应用包的检查（不是独立干净 profile 安装验收）：peer 范围准入通过（`includePrerelease`）；`dsh.client.inject` 中已不存在的 `dsh-client-ui-slots` 会被跳过；两个槽位及其标准 props 未变；fold 能处理 0.2.2-rc.1 会话日志。DeepSeek 模型 ID 与刊例价未变（`deepseek-flash` = DeepSeek-V4.1-Flash-1017，`deepseek-v4-pro` = DeepSeek-V4-Pro-0813）。
+
+### 验证与升级说明
+
+- 源码验证：Node 20.19.5 / 22.17.0 / 24.22.2，**85 项测试通过、0 跳过**（包含版本／文档一致性）；打包预检、解包后的运行时入口与类型检查通过。没有依赖升级或 peer 范围变更。
+- 隔离 Chrome 使用合成宿主／会话，验证真实组件、hook 与插件路由：配置汇率 7.1 → 刷新至 7.3、历史／指示器／徽章一致、CNY/USD 切换、保存汇率后重载、完整成本分项与英文 360px 布局。这不是实际 DSH 或干净 profile 安装认证；本版本未新增 0.1.x/0.2.x 干净 profile 验收证据。
+- 确认 npm 已存在 1.1.9 后请显式安装目标版本、重启 `dsh web` 并刷新浏览器。旧配置与价格覆盖继续兼容，新增接受仅 USD 覆盖。单币种换算的历史展示金额会随所选汇率重估，显式双币种原价不变；无需迁移会话日志。
+- 版本记录日期为 2026-11-10（北京时间）。内容已定稿，由维护者自行发布 npm；有日期的日志本身不表示 npm 已可安装。应从最终通过验证的提交发布，不要使用之前的实现提交；若实际发布跨日，请同步调整双语日志日期。
 
 ## [1.1.8] - 2026-10-22
 

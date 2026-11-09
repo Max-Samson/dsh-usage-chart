@@ -34,6 +34,8 @@ export interface UiCopy {
   unpricedMark: string
   /** 合计含未定价模型轮次时的说明（合计为下限）。 */
   unpricedExcluded: string
+  conversionNote: (rate: number) => string
+  cacheWriteNote: (price: string) => string
   costUnavailable: string
   roundUsage: string
   chartDisplay: string
@@ -146,6 +148,8 @@ const COPY: Record<UiLocale, UiCopy> = {
     costEstimate: '成本估算', inputCost: '输入', outputCost: '输出',
     pricingNote: (miss, hit, output, currencySuffix, source, verified) => `刊例价（空闲/高峰）：未命中输入 ${miss}/1M，命中输入 ${hit}/1M，输出 ${output}/1M ${currencySuffix}。来源 ${source}${verified}。估算值，不代表官方账单。`,
     pricingSourceLabel: '价格来源', pricingVerifiedLabel: '核验于', pricingFileLabel: '覆盖文件', unknownModel: '未定价模型', unpricedMark: '未定价', unpricedExcluded: '部分轮次使用未定价模型（如未收录的 Claude 型号），其成本未计入，合计为下限（≥）。', costUnavailable: '价格快照不可用，无法估算成本。',
+    conversionNote: (rate) => `单币种报价统一按 1 USD = ${rate} CNY 换算；显式双币种报价保留原价。刷新汇率会重算需换算的历史与实时成本，不代表历史账单汇率。`,
+    cacheWriteNote: (price) => `写缓存单价 ${price}/1M，计入输入费用。内置 Claude 按 5 分钟 TTL 估算；不含 1 小时 TTL、Fast、Batch、地区及额外工具费调整。`,
     roundUsage: '轮次用量', chartDisplay: '图表显示方式', totalMode: '总量', compositionMode: '构成', costMode: '成本',
     totalModeTitle: '按实际 Token 总量比较各轮消耗', compositionModeTitle: '将每轮统一为 100%，比较 Token 构成', costModeTitle: '按各桶 × 单价堆叠成本，柱顶为所选币种金额（按高峰/空闲时段计价）', refresh: '刷新',
     roundExplainer: '每根柱代表一轮提问与回答', totalExplainer: '柱高表示本轮 Token 总量', compositionExplainer: '每根柱统一为 100%，仅比较 Token 构成', costExplainer: '柱高表示本轮估算成本（按刊例价）',
@@ -155,8 +159,8 @@ const COPY: Record<UiLocale, UiCopy> = {
     currencyToggleLabel: '成本显示币种',
     currencyToggleUsdTitle: '成本按美元（USD）显示，选择会在本浏览器中记住',
     currencyToggleCnyTitle: '成本按人民币（CNY）显示，选择会在本浏览器中记住',
-    refreshRate: '刷新汇率', refreshingRate: '获取中…', refreshRateTitle: '获取最新汇率并重新估算（本次会话有效）',
-    rateLive: (rate, time) => `实时汇率已更新：1 USD = ${rate} CNY（${time} 获取，本次会话有效）`,
+    refreshRate: '刷新汇率', refreshingRate: '获取中…', refreshRateTitle: '获取并保存最新汇率，重算所有单币种报价的展示成本',
+    rateLive: (rate, time) => `实时汇率已更新：1 USD = ${rate} CNY（${time} 获取，已保存上次成功值）`,
     rateError: (rate) => `实时汇率获取失败（网络不可达或汇率源被拦截），沿用 1 USD = ${rate} CNY。可在 config.fxUrl 配置其他汇率源。`,
     toppedUp: '充值', granted: '赠送', noApiKey: '未配置 DEEPSEEK_API_KEY（或插件 config.apiKey），无法查询余额。',
     balanceError: (message) => `余额查询失败：${message}`, unknown: '未知错误', retry: '重试', balanceIdle: '点击输入框下方的余额信息即可查询。',
@@ -215,6 +219,8 @@ const COPY: Record<UiLocale, UiCopy> = {
     costEstimate: 'Estimated cost', inputCost: 'Input', outputCost: 'Output',
     pricingNote: (miss, hit, output, currencySuffix, source, verified) => `List price (off-peak/peak): cache-miss input ${miss}/1M, cache-hit input ${hit}/1M, output ${output}/1M ${currencySuffix}. Source: ${source}${verified}. Estimate only, not an official bill.`,
     pricingSourceLabel: 'Price source', pricingVerifiedLabel: 'Verified', pricingFileLabel: 'Override file', unknownModel: 'Unpriced model', unpricedMark: 'Unpriced', unpricedExcluded: 'Some rounds used an unpriced model (e.g. an unlisted Claude model); their cost is not included, so the total is a lower bound (≥).', costUnavailable: 'Price snapshot unavailable; cost cannot be estimated.',
+    conversionNote: (rate) => `Single-currency quotes use 1 USD = ${rate} CNY; explicit dual-currency quotes retain their original prices. Refreshing FX revalues converted history and live costs, not historical invoices.`,
+    cacheWriteNote: (price) => `Cache-write price ${price}/1M, included in input cost. Builtin Claude assumes a 5-minute TTL; 1-hour TTL, Fast, Batch, region and extra tool-fee adjustments are excluded.`,
     roundUsage: 'Usage by round', chartDisplay: 'Chart display', totalMode: 'Total', compositionMode: 'Mix', costMode: 'Cost',
     totalModeTitle: 'Compare rounds by actual Token usage', compositionModeTitle: 'Normalize each round to 100% and compare Token mix', costModeTitle: 'Stack cost by bucket × unit price; bar top shows the selected currency (peak/off-peak tiered)', refresh: 'Refresh',
     roundExplainer: 'Each bar represents one prompt and response', totalExplainer: 'Bar height shows total Tokens for the round', compositionExplainer: 'Each bar is normalized to 100% to compare Token mix', costExplainer: 'Bar height shows the estimated cost of the round',
@@ -224,8 +230,8 @@ const COPY: Record<UiLocale, UiCopy> = {
     currencyToggleLabel: 'Cost display currency',
     currencyToggleUsdTitle: 'Show cost in USD; remembered in this browser',
     currencyToggleCnyTitle: 'Show cost in CNY; remembered in this browser',
-    refreshRate: 'Refresh rate', refreshingRate: 'Fetching…', refreshRateTitle: 'Fetch the latest exchange rate and re-estimate (valid for this session)',
-    rateLive: (rate, time) => `Live rate updated: 1 USD = ${rate} CNY (fetched at ${time}, valid for this session)`,
+    refreshRate: 'Refresh rate', refreshingRate: 'Fetching…', refreshRateTitle: 'Fetch and save the latest FX rate; revalue all single-currency quotes',
+    rateLive: (rate, time) => `Live rate updated: 1 USD = ${rate} CNY (fetched at ${time}; last successful rate saved)`,
     rateError: (rate) => `Could not fetch the live rate (network unreachable or the FX source is blocked); keeping 1 USD = ${rate} CNY. Configure config.fxUrl for another source.`,
     toppedUp: 'Topped up', granted: 'Granted', noApiKey: 'DEEPSEEK_API_KEY (or plugin config.apiKey) is not configured, so the balance cannot be queried.',
     balanceError: (message) => `Balance query failed: ${message}`, unknown: 'Unknown error', retry: 'Retry', balanceIdle: 'Select the balance below the composer to query it.',

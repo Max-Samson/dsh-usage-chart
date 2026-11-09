@@ -34,7 +34,7 @@
 - **DSH 0.1.2+ 与皮肤兼容（v1.1.7）** — 新版从独立 `chat` 源读取会话节点，旧版回退到会话快照；皮肤创建 fixed 定位包含块时，展开面板仍贴近指示器。
 - **兼容 DSH 0.2.x client SDK（v1.1.8）** — client peer 范围同时覆盖 DSH 0.1.x 与 0.2.x（已在 0.2.1-rc.2 上验证），DSH 0.2.x 的插件准入校验在启动时即可通过；已移除退役的 `@deepseek-ai/dsh-client-runtime` peer，助手节点模型标识新增读取 0.2.x 的 `providerMetadata` 字段（存在 0.1.x 的 `provenance` 时仍优先，`requestConfig` 保留为最后回退）。
 - **高峰/空闲时段计费（v1.0.1）** — 官方高峰时段（北京时间周一至周五 09:00–12:00、14:00–18:00，即 UTC 01:00–04:00、06:00–10:00）价格为空闲时段的 2 倍；其余时段及周末全天为空闲时段；每轮成本按轮次开始时刻自动选用对应时段单价（时刻缺失按高峰保守估算）；面板顶部以**红/绿 tag 实时标注当前计费时段**（红=高峰、绿=空闲），每轮解释卡也显示该轮计费时段
-- **双币种官方刊例价（v1.0.1）** — 中文定价页（CNY）与英文定价页（USD）的官方报价同时内置：CNY 显示用人民币报价、USD 显示用美元报价，**不做汇率换算**（与官方账单口径一致）；「刷新汇率」仅更新「1 USD ≈ X CNY」参考注记
+- **双币种官方刊例价（v1.0.1）** — 中文定价页（CNY）与英文定价页（USD）的官方报价同时内置：显式 CNY/USD 报价保留原价；Claude 及用户单币种报价使用同一个展示汇率，刷新同步重算历史与实时估算
 - **多币种成本（v0.3 / v1.0.1）** — 成本区 CNY/USD 一键切换（选择在浏览器记住），指示器、面板、图表与成本徽章全部跟随所选币种
 - **轮次用量与来源归因（v1.1.0）** — 支持“总量 / 构成 / **成本**”三视角；**成本视角每根柱显示对应费用数值**（逐轮可见，不只在当前轮）；柱顶叠加**总耗时点线**；成本突增轮次加**异常标记**（归因 chip：输出增长 / 上下文膨胀 / 缓存命中下降）；柱底缓存命中迷你刻度；悬浮**解释卡**（token 分桶 + 成本 + 模型 + 计费时段 + 耗时/TTFT/TPS + **输入来源归因：人工/Agent/续跑** + 结束原因）；**全部轮次**横向滚动查看（固定细柱宽 + 自动滚到最新 + 箭头/渐隐提示），从宿主会话日志折叠完整历史，不可用时回退到本页观测增量（同样按快照估算逐轮成本）
 - **成本徽章** — 每条助手消息尾部显示可关闭的「本轮 ≈ ¥0.00xx / $0.00xx」徽章（跟随所选币种）
@@ -47,8 +47,8 @@
 | 数据 | 来源 | 准确性 |
 |---|---|---|
 | token 用量 | DSH 官方 adapter 上报的会话投影（`tokenUsage` / `contextPressure`） | ✅ 官方真实数据，实时更新 |
-| 成本 | 官方刊例价（内置表 + 可选用户覆盖 `pricing.json`，CNY/USD 双币种 /1M tokens，高峰/空闲双时段）× adapter 上报用量 | ⚠️ 估算值，非官方账单；价格经宿主 `/pricing` 单点解析 |
-| 成本币种 | 宿主 `/meta` 下发配置；成本按所选币种的官方刊例价直接计算（不做汇率换算） | ✅ 官方双币种刊例价 |
+| 成本 | 官方刊例价（内置表 + 可选用户覆盖 `pricing.json`，CNY/USD 双币种 /1M tokens，高峰/空闲双时段）× adapter 上报用量 | ⚠️ 估算值，非官方账单；价格经宿主 `/pricing` 下发；两侧共用来源优先级和换算规则 |
+| 成本币种 | 宿主 `/meta` 下发配置；双币种保留原价，单币种按共享展示汇率补全 | ⚠️ 折算为展示估值，非历史账单汇率 |
 | 轮次明细 | 宿主会话日志折叠（`/usage`）：耗时 / TTFT / TPS / 模型归因 / **输入来源归因** / 结束原因 / 每轮成本。DSH 0.2.x 累计 `assistant/message` 与失败的 `assistant/attempt` 用量（含仅在 stream 中的样本）；TTFT 取首个携带 token 的片段，TPS 按各次请求生成时长之和计算；0.1.x 保留 chunk/usage 锚点 | ✅ 官方事件流折叠 |
 | 上下文与压缩诊断 | 官方 `contextBreakdown` / `contextPressure` 投影 + 宿主 `compaction/*` 事件折叠 | ✅ 官方投影 + 事件流折叠 |
 | 余额 | 官方 `GET https://api.deepseek.com/user/balance` | ✅ 官方实时数据 |
@@ -60,6 +60,12 @@
 - **框架**：[Cordis](https://github.com/cordiverse/cordis) 插件模型 + React 18
 - **构建**：esbuild（host 半区 = Node ESM；client 半区 = `window.__ModuleLoader__.load({id, factory})` 工厂包，外部依赖与 DSH web 的 `PLATFORM_MODULES` 完全一致）
 - **可视化**：零依赖手写 SVG（DSH web 未内置图表库；自绘与平台渲染方式一致、体积最小、最稳定）
+
+## v1.1.9 — Claude 定价与一致的成本估值
+
+**v1.1.9** 包含 Claude 标准价格表、写缓存独立单价、更安全的模型名匹配与未定价轮次处理，并统一宿主／客户端覆盖优先级、补齐成本分项及共享汇率估值。所有单币种报价使用同一个展示汇率；显式双币种原价不变。完整说明见 [v1.1.9 更新日志](./CHANGELOG_ZH.md)。
+
+源码版本不代表 npm 已发布。使用下面的指定版本升级命令前，请先运行 `npm view dsh-usage-chart@1.1.9 version` 确认版本存在。升级后重启 `dsh web` 并刷新浏览器；无需迁移会话数据。
 
 ## 安装
 
@@ -76,12 +82,12 @@ dsh plugin --profile web add dsh-usage-chart   # 安装并自动登记为 profil
 dsh web --profile web                          # 启动 DSH Web（已在运行时先停止再启动）
 ```
 
-1.1.8 发布后更新：pnpm 对已安装的依赖重新 `add` 可能显示 `Already up to date`
+**v1.1.9 发布后**更新：pnpm 对已安装的依赖重新 `add` 可能显示 `Already up to date`
 而不升级，请用**显式版本**（推荐）或**先卸载再安装**：
 
 ```sh
 # 方式①：显式指定目标版本
-dsh plugin --profile web add dsh-usage-chart@1.1.8
+dsh plugin --profile web add dsh-usage-chart@1.1.9
 # 方式②：先移除再重装（回到最新版）
 dsh plugin --profile web remove dsh-usage-chart
 dsh plugin --profile web add dsh-usage-chart
@@ -94,7 +100,7 @@ dsh plugin --profile web add dsh-usage-chart
 
 > ⚠️ **未全局安装 dsh（报 `dsh: command not found` / PowerShell `无法将“dsh”项识别为…`）？
 > 把上面每条 `dsh` 都写成 `npx --yes @deepseek-ai/dsh`**，例如
-> `npx --yes @deepseek-ai/dsh plugin --profile web add dsh-usage-chart@1.1.8`
+> `npx --yes @deepseek-ai/dsh plugin --profile web add dsh-usage-chart@1.1.9`
 > （原因与解法见 [FAQ](#常见问题faq) 第一条）。
 
 ### 方式二：从 GitHub 安装（源码构建）
@@ -154,7 +160,7 @@ dsh web --profile web
         baseUrl: 'https://api.deepseek.com'
         # pricingFile: '/path/to/pricing.json'   # 可选：价格覆盖文件（默认 $DSH_HOME/data/dsh-usage-chart/pricing.json）
         # currency: 'cny'        # 可选（v0.3）：成本显示币种 'usd'（默认）| 'cny'
-        # cnyPerUsd: 6.76        # 可选（v0.3）：cny 时使用的汇率（默认 6.76，可经界面「刷新汇率」实时更新）
+        # cnyPerUsd: 6.76        # 可选（v0.3）：单币种报价的统一展示汇率（默认 6.76，可「刷新汇率」）
         # fxUrl: 'https://open.er-api.com/v6/latest/USD'   # 可选（v0.3）：自定义实时汇率源
 ```
 
@@ -189,7 +195,7 @@ dsh web --profile web
 `peak` 为高峰时段（北京时间周一至周五 09:00–12:00、14:00–18:00，即 UTC 01:00–04:00、06:00–10:00），
 `offPeak` 为空闲时段（其余时间及周末全天）。兼容旧格式：平铺
 `{ "cacheMissInput": …, "cacheHitInput": …, "output": … }` 视为高峰/空闲同价、
-人民币报价（美元按默认汇率 6.76 折算）。`verifiedAt`（epoch 毫秒）可选，用于面板
+人民币报价（美元按统一展示汇率折算，默认 6.76）。`verifiedAt`（epoch 毫秒）可选，用于面板
 展示核验日期。单价可选 `cacheWrite`（写缓存价），缺省按「缓存未命中」价计。
 
 **未收录的模型**会在 UI 中显式标记「未定价模型」：
@@ -211,21 +217,30 @@ dsh web --profile web
   Bedrock 写法等）一律视为未定价，不会被套上相近型号的价格；
 - **Claude Haiku 5.5 暂不收录**：其价格按单次请求的输入长度分档（≤100K / >100K），按轮汇总无法判定档位；
 - 不计入：批处理折扣、地区 / `inference_geo` 溢价、Fast mode、工具调用费；
-- 官方只有美元报价，人民币金额按**固定汇率 6.76** 折算（参考值，不跟随 `cnyPerUsd` 与实时汇率）。
+- 官方只有美元报价，人民币金额按**统一展示汇率**折算，与所有用户单币种报价共用 `cnyPerUsd`／上次成功值／手动刷新的实时值。
 
 ### 币种与汇率（v0.3+ / v1.0.1 官方双币种）
 
-成本按**所选币种的官方刊例价**直接计算（中文定价页 CNY 报价 / 英文定价页 USD 报价，
-**不做汇率换算**，与官方账单口径一致；例外：只有美元报价的 Claude 系列，人民币金额按固定汇率
-6.76 折算，见上文），面板成本区可一键切换 **CNY/USD**（选择在
-浏览器记住），指示器、面板、图表与成本徽章全部跟随。`config.cnyPerUsd`（默认 6.76）
-与「刷新汇率」按钮（经宿主 `/dsh-usage-chart/rate` 代理）仅用于「1 USD ≈ X CNY」
-参考注记：
+成本区可切换 **CNY/USD**（浏览器记住选择），指示器、面板、图表、压缩成本与消息徽章共用同一展示口径：
 
-- **多源回退**：自定义源（`config.fxUrl`）不可达时自动回退内置备用源（frankfurter.dev）；
-- **离线健壮性**：上次成功汇率持久化，断网刷新沿用上次真实汇率而非写死默认值；
-- **配置下发**：宿主 `/dsh-usage-chart/meta` 向 client 下发币种与汇率配置，价格注记跟随
-  显示币种并标注所用汇率。
+- **显式双币种报价**：DeepSeek 官方 CNY/USD 价及用户同时填写的两种报价保留原价，不强制按汇率改写。
+- **单币种报价**：内置 Claude（USD）、用户仅提供 `usd` 或 `cny`，以及旧的平铺人民币格式，都由同一个 `pricingAtRate` 函数补全另一币种。写缓存单价也按同一汇率换算。
+- **统一汇率来源**：初始采用 `/meta` 下发的 `config.cnyPerUsd`（无效／缺省为 6.76）；有浏览器持久化的上次成功汇率时优先恢复；手动「刷新汇率」经宿主 `/rate` 更新并保存。主源为 `config.fxUrl` 或 open.er-api.com，不可达时回退 frankfurter.dev；失败不覆盖上次成功值。
+- **刷新后的历史**：页面把当前汇率作为 `/usage?session=…&cnyPerUsd=…` 的展示参数，宿主重新计算轮次与压缩成本；实时增量和单价说明同步更新。请求按“会话 + 汇率”去重，旧响应不能覆盖新汇率或另一会话。
+- **估算而非账单**：历史成本按当前展示汇率重估，不是请求发生时的历史汇率，不修改会话日志。双币种官方报价不随刷新变化。
+- **分项完整**：成本分项及比例条展示输入（未命中 + 写缓存）、缓存命中、输出，三者之和等于总额；写缓存有独立单价时在面板说明。
+
+单币种覆盖示例（每 1M tokens，两个时段同价）：
+
+```json
+{
+  "my-usd-model": {
+    "usd": { "cacheMissInput": 4, "cacheHitInput": 0.2, "output": 20, "cacheWrite": 5 }
+  }
+}
+```
+
+价格来源优先级在 host 和 client 完全一致：**用户文件 → 内置表 → 未收录处理**；每个来源内先精确匹配，再选最长有效前缀。因此用户文件的前缀覆盖也优先于内置精确键。
 
 ### 卸载
 
@@ -259,7 +274,7 @@ A：正常且无害——react 由 DSH Web 平台在浏览器端内置，profile
 已把 react 标记为可选 peer，不再报警；0.1.0 的该警告可忽略。
 
 **Q：DSH 0.2.x 提示 `dsh-usage-chart@1.1.7 与 DSH 0.2.1-rc.2 不兼容（要求 @deepseek-ai/dsh-client-locale >=0.1.0-rc.6 <0.2.0, ...）…`，是插件不兼容吗？**
-A：该警告来自 DSH 0.2.x 的**插件准入校验**，不是 DSH 装坏了，也不会丢数据：当插件的 `@deepseek-ai/dsh*` peer 范围不匹配当前运行时版本时 DSH 会拒绝加载，而截至 1.1.7 的插件声明的是仅 0.1.x 的范围。把插件升级到 **≥ 1.1.8**（`dsh plugin --profile web add dsh-usage-chart@1.1.8`）后重启 `dsh web`；若 DSH Web 页面已打开，再刷新页面即可。DSH 本身未受损，会话数据、成本记录与凭据均未丢失——插件只是没有被加载。
+A：该警告来自 DSH 0.2.x 的**插件准入校验**，不是 DSH 装坏了，也不会丢数据：当插件的 `@deepseek-ai/dsh*` peer 范围不匹配当前运行时版本时 DSH 会拒绝加载，而截至 1.1.7 的插件声明的是仅 0.1.x 的范围。把插件升级到 **≥ 1.1.8**（`dsh plugin --profile web add dsh-usage-chart@1.1.9`）后重启 `dsh web`；若 DSH Web 页面已打开，再刷新页面即可。DSH 本身未受损，会话数据、成本记录与凭据均未丢失——插件只是没有被加载。
 
 **Q：网页端配了 API Key，余额仍显示 `–` 或「未配置」？**
 A：请确认插件版本 ≥ 0.1.1（0.1.1 起余额查询才走 DSH 凭据服务读取网页端密钥）；
@@ -302,13 +317,34 @@ node scripts/verify-render.mjs # 完整渲染验证（含明暗主题、中英�
 
 ## 维护者发布
 
-本包已经存在于 npm。仓库的 `release.yml` 通过 npm Trusted Publishing 发布（npm Trusted Publisher 与 GitHub 的 `npm` environment 须由维护者配置）；常规发版无需本地执行 `npm publish`。
+版本号为 **1.1.9**，内容已定稿。具体 npm 发布时间由维护者决定；源码版本或有日期的更新日志不代表 npm 已发布。两条发布路径**择一执行**，不要并行。
 
-1. 与 CI 一致，使用 `npm` 和已提交的 `package-lock.json`。同步 manifest 与 lockfile 根节点的版本、依赖范围和 peer 元数据；已准备好的版本不要再次递增。
-2. 同步双语 README、CHANGELOG，以及发生契约变化的架构文档/路线图。版本条目发布前保持待发布，正式发版时填写实际日期。分别记录所支持 DSH 版本线的干净 profile 安装结果，不把单元测试视为安装验收。
-3. 执行 `npm ci`、`npm run verify` 和 `npm pack --dry-run`。本地链接安装前必须重新构建：被忽略的 `lib/` 可能仍是旧版产物。检查打包清单中的截图与导出的运行时/类型文件。
-4. 提交发布准备修改，等待最终提交的 CI 通过，再创建 `v<version>` GitHub Release；tag 必须指向该最终提交。仅合并源码不会发布到 npm。
-5. 确认发布工作流成功，且 `npm view dsh-usage-chart@<version> version` 返回目标版本后，再推荐 npm 升级命令。工作流会跳过已发布的版本。
+### 手动发布 npm（本次方式）
+
+发布内容当前位于 `fix/pricing-currency-consistency`，尚未合并 `main`。请在你自己的仓库副本、工作区干净的前提下执行：
+
+```sh
+git fetch origin
+git switch fix/pricing-currency-consistency
+git pull --ff-only origin fix/pricing-currency-consistency
+git status --short                       # 应无输出
+node -p "require('./package.json').version"  # 应为 1.1.9
+npm ci
+npm run verify
+npm pack --dry-run
+npm view dsh-usage-chart versions --json   # 确认 1.1.9 尚不存在
+# 以下仅由维护者在检查无误后自行执行
+npm publish --access public
+npm view dsh-usage-chart@1.1.9 version     # 发布后应返回 1.1.9
+```
+
+如果工作区／版本不符合预期，或 npm 已存在 1.1.9，应停止，不要自动递增版本或尝试覆盖。`prepublishOnly` 会重跑验证，`prepare` 会重建被忽略的 `lib/`；检查包内运行时入口、类型声明和 README 图片，不要上传旧 tgz，也不要从之前的实现提交发布。npm 登录及可能的 2FA 提示由你直接处理，不要将凭据粘贴到聊天中。
+
+双语日志的版本记录日期为 **2026-11-10（北京时间）**；若实际发布跨日，请在发布前同步调整。各支持版本线的干净 profile 安装结果应单独记录，单元测试或隔离合成宿主浏览器验证不能代替安装验收。用户升级后须重启 `dsh web` 并刷新浏览器；无需迁移会话数据。
+
+### 可选：GitHub Release 自动发布
+
+现有 `release.yml` 在 GitHub Release `published`／`edited` 事件或手动触发 workflow 时，可通过 npm Trusted Publishing 发布。因此本次选择手动 npm 时，**不要先发布 GitHub Release**。不需要为本文改动任何凭据或 publisher 设置。若改走 workflow，应先将 tag 指向最终验证提交并等待 CI，再发布 Release。手动 npm 发布成功后，后续 Release workflow 会跳过 npm 上已存在的版本。仅推送分支或合并代码不会发布 npm。
 
 仓库发现标签继续使用 `dsh-plugin`、`dsh`、`deepseek-harness`。
 
@@ -366,7 +402,7 @@ dsh-usage-chart/
 | Web UI | React 18 / `conversation.composer.dock` + `conversation.chat.assistant-actions` |
 | 系统 | macOS、Linux、Windows（纯 JavaScript，无原生依赖） |
 
-v1.1.8 验证范围：回归测试覆盖两代事件形状。兼容性 PR 作者报告了 DSH 0.2.1-rc.2 链接构建的浏览器冒烟测试，但这不等于两条版本线均已完成干净 profile 安装验收。移除 `dsh.client.inject` 中的 `dsh-client-runtime` 后，尚未重新进行 0.1.x 实机安装测试。声称完整安装覆盖前，应分别记录运行时版本与干净 profile 测试结果。
+v1.1.9 验证范围：Node 20.19.5 / 22.17.0 / 24.22.2 各 **85 项测试通过、0 跳过**，包括发布版本一致性测试；打包及隔离合成宿主浏览器回归通过（配置／实时汇率、保存后重载、CNY/USD、完整成本分项与英文窄屏）。这些都不是实际 DSH／干净 profile 安装验收。历史证据单独保留：v1.1.8 兼容性 PR 作者报告了 DSH 0.2.1-rc.2 链接构建冒烟，Claude PR 作者报告了 0.2.2-rc.1 应用包／接口／日志检查，均不等于当前版本在两条支持线上的干净 profile 安装认证。移除退役 runtime 注入后，仍未重跑 0.1.x 实机安装。
 
 ## 社区与开源
 

@@ -2,11 +2,11 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). 中文版见 [CHANGELOG_ZH.md](./CHANGELOG_ZH.md).
 
-## [Unreleased]
+## [1.1.9] - 2026-11-10
 
 ### Added
 
-- **Claude cost estimation** — built-in Anthropic Claude official API standard rates (USD per 1M tokens, verified 2026-11-05 against https://platform.claude.com/docs/en/about-claude/pricing): Fable 5.1 / 5, Mythos 5.1 / 5, Opus 5.5 / 5 / 4.8 / 4.7 / 4.6 / 4.5 / 4.1 / 4, Sonnet 5.5 / 5 / 4.6 / 4.5 / 4, Haiku 4.5. Flat across peak/off-peak; CNY converted at the fixed 6.76 rate. Claude Haiku 5.5 is intentionally not listed (prompt-length tiered pricing cannot be determined from per-round totals).
+- **Claude cost estimation** — built-in Anthropic Claude official API standard rates (USD per 1M tokens, verified 2026-11-05 against https://platform.claude.com/docs/en/about-claude/pricing): Fable 5.1 / 5, Mythos 5.1 / 5, Opus 5.5 / 5 / 4.8 / 4.7 / 4.6 / 4.5 / 4.1 / 4, Sonnet 5.5 / 5 / 4.6 / 4.5 / 4, Haiku 4.5. Flat across peak/off-peak; CNY converted at the shared display FX rate (config/default, saved last successful rate or manual refresh). Claude Haiku 5.5 is intentionally not listed (prompt-length tiered pricing cannot be determined from per-round totals).
 - **Separate cache-write pricing** — `BucketPrices` gains an optional `cacheWrite` rate (5-minute TTL write price for Claude); `pricing.json` accepts it too. When absent, cache writes are still billed at the cache-miss rate (DeepSeek behavior unchanged).
 - **Model-id normalization** — `normalizeModelId` lower-cases, strips the `anthropic/` prefix and rewrites dotted Claude versions (`claude-opus-5.5` → `claude-opus-5-5`); used by the host resolver, `pricing.json` keys and the client snapshot lookup.
 - **Unpriced rounds** — `RoundCost` / `ChartCost` / resolver results gain `unpriced`. Session totals that include unpriced rounds are shown as `≥` (lower bound) with a panel note; the current-model price line is hidden instead of showing `$0/1M`; compaction cost is left blank instead of `$0`.
@@ -18,11 +18,22 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- **Host/client pricing parity** — a user-file prefix override now wins over a builtin exact key on both paths; matching stays exact-then-longest within each source.
+- **Complete cost breakdown** — cache-read cost is included in the panel's components and composition bar, with wrapping for narrow layouts.
+- **Shared FX valuation** — all single-currency prices (including Claude, USD-only overrides and legacy CNY entries) retain their source currency and use one validated display rate. Native dual quotes stay unchanged. Refreshes revalue history, compactions, live estimates and badges; in-flight history is keyed by session and rate with stale-response guards. Restoring a saved rate no longer blocks configured-currency initialization.
+- **Pricing explanations** — the panel shows the actual shared conversion policy, separate cache-write rate and builtin Claude's 5-minute TTL/standard-price limits instead of implying an unrelated live rate was used.
 - **Anomaly detection** skips unpriced rounds, so their zero cost no longer drags the baseline down and causes later priced rounds to be flagged as spikes.
 
 ### Compatibility
 
-- Checked against DSH 0.2.2-rc.1 (installed app bundle): the peer-range admission check passes (`includePrerelease`), the missing `dsh-client-ui-slots` package is skipped by `dsh.client.inject`, both slots and their standard props are unchanged, and the fold handles 0.2.2-rc.1 session logs. DeepSeek model ids and list prices are unchanged (`deepseek-flash` = DeepSeek-V4.1-Flash-1017, `deepseek-v4-pro` = DeepSeek-V4-Pro-0813).
+- The Claude PR author reported checks against the installed DSH 0.2.2-rc.1 app bundle (not an independent clean-profile install): the peer-range admission check passes (`includePrerelease`), the missing `dsh-client-ui-slots` package is skipped by `dsh.client.inject`, both slots and their standard props are unchanged, and the fold handles 0.2.2-rc.1 session logs. DeepSeek model ids and list prices are unchanged (`deepseek-flash` = DeepSeek-V4.1-Flash-1017, `deepseek-v4-pro` = DeepSeek-V4-Pro-0813).
+
+### Validation and upgrade notes
+
+- Source validation: Node 20.19.5 / 22.17.0 / 24.22.2, **85 tests passed, zero skipped** (including version/documentation consistency); package dry-run and extracted runtime/type checks passed. No dependency upgrades or peer-range changes.
+- Isolated Chrome with a synthetic Host/session exercised the real components/hooks and plugin routes: configured rate 7.1 → refreshed rate 7.3, history/indicator/badge agreement, CNY/USD switching, saved-rate reload, complete cost breakdown and English 360px layout. This is not installed-DSH or clean-profile certification; no new 0.1.x/0.2.x clean-profile evidence is claimed.
+- Install the explicit version once it is available on npm, restart `dsh web`, and reload the browser. Existing config and pricing files remain compatible; USD-only overrides are now accepted. Single-currency converted historical amounts can change with the selected display rate; native dual-currency quotes remain unchanged. No session-log migration is required.
+- The version-record date is 2026-11-10 (Asia/Shanghai). Content is finalized for maintainer-controlled npm publication; a dated changelog alone does not prove npm availability. Publish from the final verified release commit, not the earlier implementation commit. If publication occurs on a different date, update both changelogs together.
 
 ## [1.1.8] - 2026-10-22
 

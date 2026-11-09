@@ -19,7 +19,7 @@ Interface preview: light English on the left and dark Simplified Chinese on the 
 
 > Both screenshots use fictional demo data only. They contain no real session content, token counts, costs, balances, or API keys.
 
-The plugin adds a compact indicator below the conversation composer. It shows input/output tokens, cache-hit ratio, estimated cost, active model, a multi-segment context-pressure bar (system/tools/messages breakdown, v1.1.0), and DeepSeek account balance. Click it to open a zero-dependency SVG dashboard with per-turn usage history — including a cost view (every bar shows its own cost value, not just the current round), a duration overlay, anomaly markers, an explainer tooltip (tokens + cost + model + billing tier + duration/TTFT/TPS + **user input source attribution: human/agent/continuation**, v1.1.0 + end reason), horizontally scrollable per-round bars (all rounds, fixed slim bar width, auto-scroll to latest), a dedicated **Context & Compaction Diagnostics section** (system/tools/messages token composition, compaction timeline, freed tokens, summarize cost, context occupancy suggestions, v1.1.0), a dismissible `≈ ¥/$0.00xx` badge on each assistant message, peak/off-peak tiered billing with a live red/green billing-tier tag in the panel (red = peak, green = off-peak, v1.0.1), and official dual-currency pricing (CNY from the Chinese pricing page, USD from the English pricing page — no FX conversion, v1.0.1).
+The plugin adds a compact indicator below the conversation composer. It shows input/output tokens, cache-hit ratio, estimated cost, active model, a multi-segment context-pressure bar (system/tools/messages breakdown, v1.1.0), and DeepSeek account balance. Click it to open a zero-dependency SVG dashboard with per-turn usage history — including a cost view (every bar shows its own cost value, not just the current round), a duration overlay, anomaly markers, an explainer tooltip (tokens + cost + model + billing tier + duration/TTFT/TPS + **user input source attribution: human/agent/continuation**, v1.1.0 + end reason), horizontally scrollable per-round bars (all rounds, fixed slim bar width, auto-scroll to latest), a dedicated **Context & Compaction Diagnostics section** (system/tools/messages token composition, compaction timeline, freed tokens, summarize cost, context occupancy suggestions, v1.1.0), a dismissible `≈ ¥/$0.00xx` badge on each assistant message, peak/off-peak tiered billing with a live red/green billing-tier tag in the panel (red = peak, green = off-peak, v1.0.1), and official dual-currency pricing (native CNY/USD quotes are preserved) and a shared display FX rate for single-currency quotes.
 
 ```
 ▸ Input 12.4M · Output 86.2K · Hit 72% · Cost ≈$0.042 / ≈¥0.284 · demo-model · Balance --
@@ -34,7 +34,7 @@ Click ▸ to open the dashboard panel:
 - **DSH 0.1.2+ and themed docks (v1.1.7)** — Reads conversation nodes from the independent `chat` source on newer DSH versions, with a legacy session-snapshot fallback; keeps the expanded panel anchored when a theme creates a fixed-position containing block.
 - **DSH 0.2.x client-SDK compatibility (v1.1.8)** — Declares client peer ranges spanning both DSH 0.1.x and 0.2.x (tested against 0.2.1-rc.2) so DSH 0.2.x's plugin admission gate accepts the plugin at startup; the retired `@deepseek-ai/dsh-client-runtime` peer is gone, and the assistant-node model identity now also reads the 0.2.x `providerMetadata` field (0.1.x `provenance` still preferred when present, `requestConfig` kept as the last fallback).
 - **Peak / off-peak tiered billing (v1.0.1)** — Peak hours (Beijing time Monday–Friday 09:00–12:00 and 14:00–18:00, UTC 01:00–04:00 and 06:00–10:00) billed at 2× the off-peak rate; all other hours and weekends billed at off-peak rates; rounds bill automatically based on start time (or conservative peak if unknown); live red/green tag in the panel header.
-- **Official dual-currency list pricing (v1.0.1)** — Builtin official CNY and USD prices directly used according to the active display currency — **no FX conversion applied to costs** (matching official billing); "Refresh rate" updates only the informational "1 USD ≈ X CNY" reference note.
+- **Official dual-currency list pricing (v1.0.1)** — Native CNY and USD quotes are preserved. Single-currency quotes (including Claude and user overrides) use one shared display FX rate across history, live estimates, charts and badges.
 - **Multi-currency display (v0.3 / v1.0.1)** — One-click toggle between USD and CNY (persisted in localStorage); indicator, panel, chart, and badges all follow.
 - **Per-round usage & source attribution (v1.1.0)** — "Total / Composition / **Cost**" view modes; cost mode shows each bar's monetary amount; duration line overlay; anomaly marker chips on cost spikes; cache hit miniature ticks; hover explainer card with full round metrics + **user input source attribution: human/agent/continuation**; horizontal scroll for full session history.
 - **Cost badge** — Dismissible `≈ ¥/$0.00xx` badge rendered at the bottom of each assistant message.
@@ -61,6 +61,12 @@ Click ▸ to open the dashboard panel:
 - **Build**: esbuild (Host half = Node ESM; Client half = browser factory bundle matching DSH Web `PLATFORM_MODULES`)
 - **Visualization**: Zero-dependency handcrafted SVG (matches platform rendering, minimal footprint, ultra-stable)
 
+## v1.1.9 — Claude pricing and consistent cost valuation
+
+**v1.1.9** includes the Claude standard-price catalog, separate cache-write rates, safer model-id matching and explicit unpriced-round handling, plus consistent Host/Client override priority, complete cost breakdowns and shared FX valuation. All single-currency quotes use one display rate; explicit dual-currency prices remain unchanged. See [v1.1.9 changes and upgrade notes](./CHANGELOG.md).
+
+The source version is not proof of npm publication. Run `npm view dsh-usage-chart@1.1.9 version` before using the version-pinned upgrade command below. After upgrading, restart `dsh web` and reload the browser; no session-data migration is required.
+
 ## Install
 
 Prerequisites: **[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) ≥ 0.1.0-rc.6** · **Node.js ≥ 20** · **[pnpm](https://pnpm.io/install) on PATH** (`dsh plugin` forwards installs to pnpm).
@@ -75,11 +81,11 @@ dsh plugin --profile web add dsh-usage-chart   # installs and registers the prof
 dsh web --profile web                          # starts DSH Web (stop it first if already running)
 ```
 
-To update after 1.1.8 is published: pnpm may print `Already up to date` when already installed — use an **explicit version** (recommended) or **remove then re-add**:
+To update after **v1.1.9** is published: pnpm may print `Already up to date` when already installed — use an **explicit version** (recommended) or **remove then re-add**:
 
 ```sh
 # Option ①: pin the target version explicitly
-dsh plugin --profile web add dsh-usage-chart@1.1.8
+dsh plugin --profile web add dsh-usage-chart@1.1.9
 # Option ②: remove, then re-add (back to latest)
 dsh plugin --profile web remove dsh-usage-chart
 dsh plugin --profile web add dsh-usage-chart
@@ -139,7 +145,7 @@ The balance query needs a DeepSeek API key, resolved per request in this order (
         baseUrl: 'https://api.deepseek.com'
         # pricingFile: '/path/to/pricing.json'   # optional: price override file
         # currency: 'cny'        # optional (v0.3): 'usd' (default) | 'cny'
-        # cnyPerUsd: 6.76        # optional (v0.3): FX rate for note display
+        # cnyPerUsd: 6.76        # optional: shared display FX rate for single-currency quotes
         # fxUrl: 'https://open.er-api.com/v6/latest/USD'   # optional (v0.3): custom live rate source
 ```
 
@@ -180,15 +186,30 @@ Built-in standard rates from the [Anthropic pricing page](https://platform.claud
 - Model-id matching normalizes the `anthropic/` prefix and dotted versions (`claude-opus-5.5`); ids with a dated snapshot suffix (`-20261101` / `-latest`) are priced as that model; any other variant (an unlisted newer version, `-fast`, `-batch`, Bedrock ids, …) is treated as unpriced and never borrows a similar model's rate;
 - **Claude Haiku 5.5 is not listed yet**: it is priced by per-request prompt length (≤100K / >100K), which a per-round total cannot determine;
 - Not included: batch discounts, regional / `inference_geo` premiums, Fast mode, tool fees;
-- Anthropic only quotes USD; CNY amounts are converted at a **fixed rate of 6.76** (informational; they do not follow `cnyPerUsd` or the live rate).
+- Anthropic only quotes USD; CNY amounts use the **shared display FX rate**, including `cnyPerUsd`, the saved last successful rate and manually refreshed rates, just like every user single-currency quote.
 
 ### Display currency and live FX rate (v0.3+ / v1.0.1 official dual-currency)
 
-Costs are computed with the **official list price of the selected currency** (CNY quote from the Chinese pricing page, USD quote from the English pricing page — **no FX conversion**, consistent with the official bill; the exception is the USD-only Claude models, whose CNY amounts use the fixed 6.76 rate described above). The cost section has a one-click **CNY/USD** toggle (remembered in the browser); the indicator, panel, chart and badge all follow it. `config.cnyPerUsd` (default 6.76) and the "Refresh rate" button (via Host `/dsh-usage-chart/rate` proxy) are used only for the informational "1 USD ≈ X CNY" note:
+The **CNY/USD** toggle is remembered in the browser. The indicator, panel, charts, compaction costs and message badges share one valuation policy:
 
-- **Multi-source fallback**: when the custom source (`config.fxUrl`) is unreachable, a built-in fallback source (frankfurter.dev) is tried;
-- **Offline resilience**: the last successful rate is persisted, so a refresh while offline keeps the last real rate instead of the fixed default;
-- **Config distribution**: the Host `/dsh-usage-chart/meta` route sends the display currency and rate config to the client.
+- **Explicit dual-currency quotes**: keep DeepSeek's native CNY/USD prices and any user-supplied pair unchanged; do not overwrite native quotes with FX conversion.
+- **Single-currency quotes**: builtin Claude (USD), user `usd`-only or `cny`-only entries and legacy flat CNY entries all use the same `pricingAtRate` function to derive the other currency, including cache-write prices.
+- **One FX source**: start with `config.cnyPerUsd` from `/meta` (invalid/missing values default to 6.76), prefer the browser's saved last successful rate when available, then update and save it on manual refresh through Host `/rate`. The primary source is `config.fxUrl` or open.er-api.com, with frankfurter.dev as fallback. Failed refreshes keep the last successful value.
+- **History after refresh**: `/usage?session=…&cnyPerUsd=…` receives the current display rate and recalculates rounds and compactions; live increments and unit-price notes use that same rate. Requests are deduplicated by session plus rate; stale responses cannot replace another session or rate.
+- **Estimates, not invoices**: historical costs are revalued at the current display rate, not the FX rate at request time. Session logs are never changed. Native dual-currency quotes do not change on refresh.
+- **Complete breakdown**: input (cache miss plus cache write), cache read and output appear in both the cost breakdown and composition bar. They sum to the total; a separate cache-write rate is explained in the panel when present.
+
+Single-currency override example (per 1M tokens, flat across both tiers):
+
+```json
+{
+  "my-usd-model": {
+    "usd": { "cacheMissInput": 4, "cacheHitInput": 0.2, "output": 20, "cacheWrite": 5 }
+  }
+}
+```
+
+Host and client use the same source priority: **user file → builtin → unknown-model handling**. Within each source, exact matching wins, then the longest eligible prefix. A user-file prefix override therefore also wins over a builtin exact key.
 
 ### Uninstall
 
@@ -208,7 +229,7 @@ A: `npx @deepseek-ai/dsh` runs transiently and installs no global command. Run `
 A: Harmless — react is provided by the DSH Web platform in the browser; the profile does not need it. Plugin ≥ 0.1.1 marks react as an optional peer.
 
 **Q: DSH 0.2.x warns `dsh-usage-chart@1.1.7 与 DSH 0.2.1-rc.2 不兼容（要求 @deepseek-ai/dsh-client-locale >=0.1.0-rc.6 <0.2.0, ...）…` — is the plugin incompatible?**
-A: That warning comes from DSH 0.2.x's **plugin admission gate**, not from a damaged DSH install and not from data loss: DSH refuses to load a plugin whose `@deepseek-ai/dsh*` peer ranges do not match the running runtime version, and plugin versions through 1.1.7 declared 0.1.x-only ranges. Upgrade the plugin to **≥ 1.1.8** (`dsh plugin --profile web add dsh-usage-chart@1.1.8`), then restart `dsh web` and reload the DSH Web page if it was already open. DSH itself was not damaged and no session data, costs, or credentials were lost — the plugin simply was not loaded.
+A: That warning comes from DSH 0.2.x's **plugin admission gate**, not from a damaged DSH install and not from data loss: DSH refuses to load a plugin whose `@deepseek-ai/dsh*` peer ranges do not match the running runtime version, and plugin versions through 1.1.7 declared 0.1.x-only ranges. Upgrade the plugin to **≥ 1.1.8** (`dsh plugin --profile web add dsh-usage-chart@1.1.9`), then restart `dsh web` and reload the DSH Web page if it was already open. DSH itself was not damaged and no session data, costs, or credentials were lost — the plugin simply was not loaded.
 
 **Q: The balance still shows `–` / "not configured" after setting the API key in the web UI?**
 A: Make sure the plugin is ≥ 0.1.1, then restart `dsh web`. As a stopgap, set `DEEPSEEK_API_KEY` or `config.apiKey`.
@@ -246,13 +267,34 @@ node scripts/verify-render.mjs # Full render verification (light/dark themes, ZH
 
 ## Maintainer releases
 
-The package already exists on npm. The repository's `release.yml` workflow publishes through npm Trusted Publishing (the npm Trusted Publisher and GitHub `npm` environment must be configured by the maintainer); ordinary releases do not require local `npm publish`.
+The version is **1.1.9** and its content is finalized. The maintainer chooses when to publish it; a source version or dated changelog is not proof that npm already has the package. Use **one** publication path, not both at once.
 
-1. Use `npm` and the committed `package-lock.json`, matching CI. Keep the manifest and lockfile root versions, dependency ranges, and peer metadata in sync; do not bump an already-prepared version again.
-2. Update both READMEs and changelogs, plus architecture/roadmap notes when contracts change. Keep the version entry pending until release, then set its actual release date. Record clean-profile installation evidence separately for each supported DSH line; never infer it from unit tests.
-3. Run `npm ci`, `npm run verify`, and `npm pack --dry-run`. Rebuild before linking a local checkout: ignored `lib/` output may still belong to an older version. Check preview images and exported runtime/type files in the package list.
-4. Commit the release-preparation changes and wait for CI on the final commit. Create `v<version>` GitHub Release with its tag pointing to that exact commit. Merging source alone does not publish npm packages.
-5. Confirm the release workflow succeeds and `npm view dsh-usage-chart@<version> version` returns the expected version; only then recommend the npm upgrade command. The workflow skips a version already present on npm.
+### Manual npm publication (this release)
+
+The release content is on `fix/pricing-currency-consistency`, not yet on `main`. In your own checkout, with a clean working tree:
+
+```sh
+git fetch origin
+git switch fix/pricing-currency-consistency
+git pull --ff-only origin fix/pricing-currency-consistency
+git status --short                       # must be clean
+node -p "require('./package.json').version"  # must print 1.1.9
+npm ci
+npm run verify
+npm pack --dry-run
+npm view dsh-usage-chart versions --json   # confirm 1.1.9 is not already published
+# Maintainer only: after reviewing the checks above
+npm publish --access public
+npm view dsh-usage-chart@1.1.9 version     # must print 1.1.9 after publication
+```
+
+Stop if the worktree/version is unexpected or npm already has 1.1.9; do not change versions or overwrite existing packages automatically. The `prepublishOnly` hook reruns verification and `prepare` rebuilds ignored `lib/` output. Inspect packaged runtime/type entries and README images; do not upload an old tarball or build from the earlier implementation commit. The maintainer handles npm sign-in and any 2FA prompts directly—never paste credentials into chat.
+
+Both changelogs use the version-record date **2026-11-10 (Asia/Shanghai)**. If publication occurs on a different day, update both before publishing. Record supported-runtime clean-profile tests separately; unit tests or the isolated synthetic-Host browser probe do not certify installation. Users must restart `dsh web` and reload the browser after upgrading. No session-data migration is required.
+
+### Optional GitHub Release workflow
+
+The existing `release.yml` can publish via npm Trusted Publishing on a GitHub Release `published`/`edited` event or manual workflow dispatch. Therefore **do not publish a GitHub Release first when you intend to publish npm manually**. Do not change credentials or publisher settings to follow this guide. If using the workflow instead, tag the final verified release commit and wait for its CI before publishing the Release. After a manual npm publication, a later Release workflow skips the version already present on npm. A branch push or merge by itself does not publish npm.
 
 ## Plugin architecture
 
@@ -293,7 +335,7 @@ dsh-usage-chart/
 ## Data and security boundaries
 
 - Token and context data come from the active DSH session projections; per-round chart reads the session log and falls back to page-observed deltas if unavailable.
-- Costs are estimated based on official list prices (user-overridable via `pricing.json`); price resolution happens only on the Host.
+- Costs are estimated based on official list prices (user-overridable via `pricing.json`); the Host supplies the pricing snapshot; Host and Client share source precedence and conversion rules.
 - Currency and rates: `/meta` delivers display config; `/rate` proxies live FX rates via the Host (browser never directly contacts external rate providers); rate URLs require HTTPS (loopback HTTP allowed for local testing).
 - Balance is queried via the same-origin Host proxy (direct browser requests have CORS and key-exposure risks).
 - Host routes only accept same-origin GET requests and set `no-store` on JSON responses; the plugin never sends the API key to the browser.
@@ -307,7 +349,7 @@ dsh-usage-chart/
 | Web UI | React 18 / `conversation.composer.dock` + `conversation.chat.assistant-actions` |
 | OS | macOS, Linux, Windows (pure JavaScript, no native dependencies) |
 
-Validation scope for v1.1.8: regression tests cover both event shapes. The compatibility PR author reported a linked-build browser smoke test on DSH 0.2.1-rc.2; this is not evidence of clean-profile installation on both lines. No live 0.1.x installation was re-run after removing `dsh-client-runtime` from `dsh.client.inject`. Record each runtime/version and clean-profile result before claiming full installation coverage.
+Validation scope for v1.1.9: Node 20.19.5 / 22.17.0 / 24.22.2 each pass **85 tests with zero skipped**, including the release-version consistency check. Package and isolated synthetic-Host browser regressions pass (configured/live FX, saved-rate reload, CNY/USD, complete cost components and English narrow layout). These are not actual DSH/clean-profile installation tests. Historical evidence remains separate: the v1.1.8 compatibility PR author reported a DSH 0.2.1-rc.2 linked-build smoke; the Claude PR author reported 0.2.2-rc.1 bundle/API/log checks. Neither certifies current clean-profile installation on both supported lines. No live 0.1.x installation has been re-run after the retired runtime injection was removed.
 
 ## Community and open source
 

@@ -13,7 +13,7 @@ import { readFile } from 'node:fs/promises'
 import { watch } from 'node:fs'
 import { dirname } from 'node:path'
 import type { BucketPrices, ModelPricing, PriceTier } from './calc.ts'
-import { DEFAULT_CNY_PER_USD, matchPricingKey, normalizeModelId } from './calc.ts'
+import { pricingAtRate, matchPricingKey, normalizeModelId } from './calc.ts'
 
 /** 价格来源标识。 */
 export type PricingSourceId = 'builtin' | 'file'
@@ -78,7 +78,7 @@ export const BUILTIN_VERIFIED_AT = Date.parse('2026-09-10T00:00:00Z')
  * 来源：https://platform.claude.com/docs/en/about-claude/pricing（2026-11-05 核验，
  * 含「Additional models」表）。
  *  - 不分高峰/空闲：peak 与 offPeak 同价；
- *  - 官方只有美元报价：人民币按 DEFAULT_CNY_PER_USD 折算（参考值）；
+ *  - 官方只有美元报价：人民币按统一展示汇率折算（未指定时默认 DEFAULT_CNY_PER_USD）；
  *  - cacheWrite 取 5 分钟 TTL 写入价（1 小时 TTL 更贵，用量里无法区分）；
  *  - 批处理折扣、地区/inference_geo 溢价、Fast mode、工具调用费不计入；
  *  - Claude Haiku 5.5 按单次请求的输入长度分档（≤100K / >100K），按轮聚合无法
@@ -87,14 +87,8 @@ export const BUILTIN_VERIFIED_AT = Date.parse('2026-09-10T00:00:00Z')
 export const ANTHROPIC_VERIFIED_AT = Date.parse('2026-11-05T00:00:00Z')
 
 function usdFlatPricing(usd: Required<BucketPrices>): ModelPricing {
-  const cny: Required<BucketPrices> = {
-    cacheMissInput: usd.cacheMissInput * DEFAULT_CNY_PER_USD,
-    cacheHitInput: usd.cacheHitInput * DEFAULT_CNY_PER_USD,
-    output: usd.output * DEFAULT_CNY_PER_USD,
-    cacheWrite: usd.cacheWrite * DEFAULT_CNY_PER_USD,
-  }
-  const tier: PriceTier = { cny, usd }
-  return { peak: tier, offPeak: tier }
+  const tier: PriceTier = { cny: usd, usd, baseCurrency: 'usd' }
+  return pricingAtRate({ peak: tier, offPeak: tier })
 }
 
 /** 简写：输入 / 输出 / 5 分钟写缓存 / 缓存命中（USD / 1M）。 */
@@ -190,36 +184,34 @@ function normalizeBucketPrices(value: unknown): BucketPrices | null {
   return prices
 }
 
-/** 人民币单价 → 按默认汇率折算美元单价（仅用于单币种覆盖的补全）。 */
-function deriveUsd(cny: BucketPrices): BucketPrices {
-  const usd: BucketPrices = {
-    cacheMissInput: cny.cacheMissInput / DEFAULT_CNY_PER_USD,
-    cacheHitInput: cny.cacheHitInput / DEFAULT_CNY_PER_USD,
-    output: cny.output / DEFAULT_CNY_PER_USD,
-  }
-  if (cny.cacheWrite !== undefined) usd.cacheWrite = cny.cacheWrite / DEFAULT_CNY_PER_USD
-  return usd
+/** 保留单币种来源标记；默认形状补全也走同一换算函数，避免厂商专属汇率。 */
+function singleCurrencyTier(prices: BucketPrices, baseCurrency: 'cny' | 'usd'): PriceTier {
+  const tier: PriceTier = { cny: prices, usd: prices, baseCurrency }
+  return pricingAtRate({ peak: tier, offPeak: tier }).peak
 }
 
 /**
  * 校验并规范化一个时段单价（PriceTier）：
- *  - 双币种：`{ cny: {…}, usd: {…} }`（usd 可缺省，缺省按默认汇率折算）；
+ *  - 双币种：`{ cny: {…}, usd: {…} }`（可只给 cny 或 usd；记录原币种，供统一展示汇率重算）；
  *  - 单币种（兼容）：平铺 `{ cacheMissInput, cacheHitInput, output }`，视为人民币，
- *    美元按默认汇率折算。
+ *    默认形状补全后保留原币种标记，解析时按统一展示汇率重算。
  */
 function normalizePriceTier(value: unknown): PriceTier | null {
   if (typeof value !== 'object' || value === null) return null
   const record = value as Record<string, unknown>
   if (record.cny !== undefined || record.usd !== undefined) {
     const cny = normalizeBucketPrices(record.cny)
-    if (cny === null) return null
-    const usd = record.usd === undefined ? deriveUsd(cny) : normalizeBucketPrices(record.usd)
-    if (usd === null) return null
-    return { cny, usd }
+    const usd = record.usd === undefined ? null : normalizeBucketPrices(record.usd)
+    // 显式提供的非法报价不能静默当作缺失；只提供 USD/CNY 都可补全另一币种。
+    if ((record.cny !== undefined && cny === null) || (record.usd !== undefined && usd === null)) return null
+    if (cny !== null && usd !== null) return { cny, usd }
+    if (cny !== null) return singleCurrencyTier(cny, 'cny')
+    if (usd !== null) return singleCurrencyTier(usd, 'usd')
+    return null
   }
   const cny = normalizeBucketPrices(record)
   if (cny === null) return null
-  return { cny, usd: deriveUsd(cny) }
+  return singleCurrencyTier(cny, 'cny')
 }
 
 /** pricing.json 支持两种形状：平铺 `{ model: {…} }` 或 `{ models: { model: {…} } }`。 */
@@ -234,9 +226,9 @@ export type PricingFileShape =
  *  - 新格式（推荐）：`{ peak: { cny, usd }, offPeak: { cny, usd }, verifiedAt? }`，
  *    双时段 × 双币种显式定价；
  *  - 兼容①：`{ peak: {…}, offPeak: {…} }`（时段单价平铺桶价）→ 视为人民币，
- *    美元按默认汇率折算；
+ *    按统一展示汇率补全美元；
  *  - 兼容②：平铺 `{ cacheMissInput, cacheHitInput, output }` → 高峰/空闲同价、
- *    单币种（人民币），美元按默认汇率折算。
+ *    单币种（人民币），默认形状补全后保留原币种标记，解析时按统一展示汇率重算。
  */
 export function normalizeFileEntry(value: unknown): FilePricingEntry | null {
   if (typeof value !== 'object' || value === null) return null

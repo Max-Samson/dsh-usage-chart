@@ -5,7 +5,7 @@
  * 未知模型不静默按 0 计——`unknown: true` 显式标记，UI 显示「未定价模型」。
  */
 import type { CostSplit, ModelPricing, TokenUsageBuckets } from './calc.ts'
-import { costSplitAt, isUnpricedWhenUnknown, normalizeModelId, UNPRICED_PRICING } from './calc.ts'
+import { costSplitAt, DEFAULT_CNY_PER_USD, pricingAtRate, isUnpricedWhenUnknown, normalizeModelId, UNPRICED_PRICING } from './calc.ts'
 import { builtinPricingSource, FALLBACK_PRICING, type PricingSource } from './source.ts'
 
 /** 解析结果：定价 + 来源 + 时效 + 是否显式收录。 */
@@ -54,7 +54,7 @@ function fallbackResult(normalized = ''): ResolvedPricing {
  * 组合解析器：file 优先，其次 builtin，最后未收录回退。
  * 均不做 IO——来源的读取/监听在 source 适配器内部完成。
  */
-export function createPricingResolver(file?: PricingSource | null): PricingResolver {
+export function createPricingResolver(file?: PricingSource | null, cnyPerUsd: number = DEFAULT_CNY_PER_USD): PricingResolver {
   const builtin = builtinPricingSource()
   const sources: PricingSource[] = file === null || file === undefined ? [builtin] : [file, builtin]
 
@@ -66,7 +66,7 @@ export function createPricingResolver(file?: PricingSource | null): PricingResol
       const hit = source.resolve(normalized)
       if (hit.pricing !== null) {
         return {
-          pricing: hit.pricing,
+          pricing: pricingAtRate(hit.pricing, cnyPerUsd),
           source: source.id,
           verifiedAt: hit.verifiedAt,
           known: true,
@@ -86,7 +86,7 @@ export function createPricingResolver(file?: PricingSource | null): PricingResol
         if (hit.pricing === null) continue
         const key = normalizeModelId(model)
         if (!table.has(key)) {
-          table.set(key, { pricing: hit.pricing, source: source.id, verifiedAt: hit.verifiedAt })
+          table.set(key, { pricing: pricingAtRate(hit.pricing, cnyPerUsd), source: source.id, verifiedAt: hit.verifiedAt })
         }
       }
     }
@@ -99,23 +99,23 @@ export function createPricingResolver(file?: PricingSource | null): PricingResol
 }
 
 // ── v0.1 兼容出口（lib/index.js 原样导出）───────────────────────────────────
-// 只走内置表，语义与 v0.1 pricing.ts 完全一致；新代码应走 createPricingResolver。
+// 兼容旧调用参数；未显式传汇率时使用统一默认值，新代码应传当前展示汇率。
 
 const builtinOnly = builtinPricingSource()
 
 /** 取某模型定价；未收录时返回回退价，并标记为估算（v0.1 兼容）。 */
-export function pricingFor(model: string | undefined): { pricing: ModelPricing; estimated: boolean } {
+export function pricingFor(model: string | undefined, cnyPerUsd: number = DEFAULT_CNY_PER_USD): { pricing: ModelPricing; estimated: boolean } {
   const normalized = model === undefined ? '' : normalizeModelId(model)
   const resolved = normalized === '' ? null : builtinOnly.resolve(normalized)
   if (resolved === null || resolved.pricing === null) {
     return { pricing: isUnpricedWhenUnknown(normalized) ? UNPRICED_PRICING : FALLBACK_PRICING, estimated: true }
   }
-  return { pricing: resolved.pricing, estimated: false }
+  return { pricing: pricingAtRate(resolved.pricing, cnyPerUsd), estimated: false }
 }
 
 /** 按内置刊例价估算一次用量成本（CNY；时刻未知按高峰价保守估算）（v0.1 兼容）。 */
-export function estimateCost(usage: TokenUsageBuckets, model: string | undefined): { cny: number; estimated: boolean } {
-  const { pricing, estimated } = pricingFor(model)
+export function estimateCost(usage: TokenUsageBuckets, model: string | undefined, cnyPerUsd: number = DEFAULT_CNY_PER_USD): { cny: number; estimated: boolean } {
+  const { pricing, estimated } = pricingFor(model, cnyPerUsd)
   const split: CostSplit = costSplitAt(usage, pricing, null, 'cny')
   return { cny: split.total, estimated }
 }

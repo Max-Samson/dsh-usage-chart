@@ -70,7 +70,8 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
   } = props
   const copy = getUiCopy(locale)
   const { currency, cnyPerUsd, rateFetchedAt } = useDisplayCurrency()
-  const currencySuffix = currency === 'cny' ? `CNY（1 USD ≈ ${cnyPerUsd} CNY）` : 'USD'
+  // 币种标签只描述币种，不能把参考汇率暗示成官方双币种报价的换算关系。
+  const currencySuffix = currency.toUpperCase()
   const currentTier = useCurrentTier()
 
   const onRefreshRate = async (): Promise<void> => {
@@ -92,8 +93,9 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
   const effectiveModel = model
   const costView = useMemo(() => {
     if (pricing.table === null) return null
-    return resolvePricing(pricing.table, effectiveModel)
-  }, [pricing.table, effectiveModel])
+    return resolvePricing(pricing.table, effectiveModel, cnyPerUsd)
+  }, [pricing.table, effectiveModel, cnyPerUsd])
+  const cacheWritePrice = costView?.pricing[currentTier][currency].cacheWrite
   const occupancy = occupancyPercent(pressure)
   const cacheHit = cacheHitPercent(totals)
   const hasTokens = billedInputTokens(totals) > 0 || totals.outputTokens > 0
@@ -249,11 +251,14 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
           <>
             <div className="duc-cost-split">
               <span><i style={{ background: SEGMENT_COLORS.miss }} />{copy.inputCost} <b>{formatMoney(costSplitTotal.input, currency)}</b></span>
+              {/* cacheRead 是独立费用桶，不能从分项与比例条中漏掉。 */}
+              <span><i style={{ background: SEGMENT_COLORS.hit }} />{copy.segments.hit} <b>{formatMoney(costSplitTotal.cacheRead, currency)}</b></span>
               <span><i style={{ background: SEGMENT_COLORS.output }} />{copy.outputCost} <b>{formatMoney(costSplitTotal.output, currency)}</b></span>
             </div>
             <HStack
               segments={[
                 { label: copy.inputCost, value: costSplitTotal.input, color: SEGMENT_COLORS.miss },
+                { label: copy.segments.hit, value: costSplitTotal.cacheRead, color: SEGMENT_COLORS.hit },
                 { label: copy.outputCost, value: costSplitTotal.output, color: SEGMENT_COLORS.output },
               ]}
             />
@@ -271,6 +276,10 @@ export function UsagePanel(props: UsagePanelProps): JSX.Element {
                 <><span className="duc-unknown-chip">{copy.unknownModel}</span> {model}</>
               )}
             </div>
+            <div className="duc-note">{copy.conversionNote(cnyPerUsd)}</div>
+            {!costView.unpriced && cacheWritePrice !== undefined && (
+              <div className="duc-note">{copy.cacheWriteNote(formatPricePerM(cacheWritePrice, currency))}</div>
+            )}
             {costSplitTotal.unpriced && <div className="duc-note">{copy.unpricedExcluded}</div>}
             {currency === 'cny' && rateStatus !== 'idle' && (
               <div className="duc-note">{rateStatus === 'ok'

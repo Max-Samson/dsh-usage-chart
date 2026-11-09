@@ -4,7 +4,7 @@
  * 挂 `conversation.chat.assistant-actions` 槽位（每轮助手消息尾部）。
  * 数据来自 HistoryFeed（host /usage 折叠的完整历史，含每轮成本）；
  * messageId → 快照节点 → turn → 该轮成本。历史不可用时保持隐藏。
- * 金额跟随成本显示币种（官方 CNY / USD 刊例价）。
+ * 金额跟随成本显示币种与统一展示汇率（显式双币种保留原价）。
  */
 import { useMemo, useState } from 'react'
 import { formatMoney } from '../../pricing/calc.ts'
@@ -28,7 +28,7 @@ export function CostBadge(props: CostBadgeProps): JSX.Element | null {
   const { messageId, useSession, useChat, sessionId } = props
   const locale = useUiLocale()
   const copy = getUiCopy(locale)
-  const { currency } = useDisplayCurrency()
+  const { currency, cnyPerUsd } = useDisplayCurrency()
   const [dismissed, setDismissed] = useState(false)
 
   const nodes = useSessionNodes(useChat, useSession)
@@ -43,7 +43,7 @@ export function CostBadge(props: CostBadgeProps): JSX.Element | null {
     return null
   }, [messageId, nodes])
 
-  const history = useHistoryRounds(sessionId)
+  const history = useHistoryRounds(sessionId, cnyPerUsd)
 
   const round = useMemo(() => {
     if (turn === null || history.status !== 'ok') return null
