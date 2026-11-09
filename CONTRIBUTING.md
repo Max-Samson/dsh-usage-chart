@@ -17,6 +17,12 @@ For UI changes, run the visual probe scripts against a running DSH Web before op
 They resolve Chrome, target URL, session, and screenshot output through `DSH_PROBE_*`
 environment variables — see the README's development section for the table.
 
+## Pricing and FX regression contract
+
+Preserve source priority (file before builtin) on both Host and Client, including prefix overrides versus exact builtin keys. Test the real exported pricing snapshot, not only independent synthetic tables. Single-currency entries must retain `PriceTier.baseCurrency` and use `pricingAtRate` with the shared display rate; do not introduce model-specific FX constants or rewrite explicit dual-currency prices. History requests/cache identities include session plus rate, and stale responses must not overwrite a new identity. Cover rounds, compactions, live estimates, unit-price notes and badges when changing the valuation path. Panel components and composition bars must include input, cache-read and output costs.
+
+`tests/pricing-consistency.test.mjs`, `tests/currency-history.test.mjs` and `tests/usage-panel.test.mjs` cover this contract. Keep browser/installation evidence separate from pure, mocked-hook or static-render checks.
+
 ## Compatibility
 
 This plugin supports DSH 0.1.x and 0.2.x Host/Client bundle conventions; its peer ranges cover both. `@deepseek-ai/dsh-client-runtime` was retired in DSH 0.2.0 — do not reintroduce imports, build externals, or peer entries for it. Changes to injected services, slots, module-loader externals, or `cordis.patch.yml` must include clean Web-profile installation evidence for each supported DSH line. Record the exact runtime/plugin versions, installation source, and result separately. Unit/shape tests or a linked-build browser probe do not certify clean-profile installation; explicitly document any untested line.

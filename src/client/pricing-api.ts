@@ -7,7 +7,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CostCurrency, CostSplit, ModelPricing, TokenUsageBuckets } from '../pricing/calc.ts'
-import { costSplitAt, isUnpricedWhenUnknown, matchPricingKey, normalizeModelId, UNPRICED_PRICING } from '../pricing/calc.ts'
+import { costSplitAt, DEFAULT_CNY_PER_USD, pricingAtRate, isUnpricedWhenUnknown, matchPricingKey, normalizeModelId, UNPRICED_PRICING } from '../pricing/calc.ts'
 
 export interface PricingEntry {
   pricing: ModelPricing
@@ -75,21 +75,26 @@ export interface ResolvedClientPricing {
   unpriced: boolean
 }
 
-/** 按快照解析模型价格（精确 → 最长前缀 → 回退；未收录 Claude 不回退，标记未定价）。 */
-export function resolvePricing(table: PricingTable, model: string | null | undefined): ResolvedClientPricing {
+/** 按来源（文件 → 内置）选键，再补全展示币种；未收录 Claude 标记未定价。 */
+export function resolvePricing(table: PricingTable, model: string | null | undefined, cnyPerUsd: number = DEFAULT_CNY_PER_USD): ResolvedClientPricing {
   const name = model === null || model === undefined ? '' : normalizeModelId(model)
   if (name !== '') {
-    const key = matchPricingKey(Object.keys(table.entries), name)
-    const entry = key === null ? undefined : table.entries[key]
-    if (entry !== undefined) {
-      return { pricing: entry.pricing, source: entry.source, verifiedAt: entry.verifiedAt, known: true, unpriced: false }
+    // 来源优先级必须与 host 相同：文件前缀覆盖也应胜过内置精确键。
+    // 不能先在拍平的快照上选最长键，否则历史刷新前后会使用不同价格。
+    for (const source of ['file', 'builtin'] as const) {
+      const keys = Object.keys(table.entries).filter((key) => table.entries[key]?.source === source)
+      const key = matchPricingKey(keys, name)
+      const entry = key === null ? undefined : table.entries[key]
+      if (entry !== undefined) {
+        return { pricing: pricingAtRate(entry.pricing, cnyPerUsd), source: entry.source, verifiedAt: entry.verifiedAt, known: true, unpriced: false }
+      }
     }
     // Claude 等非 DeepSeek 模型未收录：不套 DeepSeek 回退价，标记未定价。
     if (isUnpricedWhenUnknown(name)) {
       return { pricing: UNPRICED_PRICING, source: 'fallback', verifiedAt: null, known: false, unpriced: true }
     }
   }
-  return { pricing: table.fallback, source: 'fallback', verifiedAt: table.fallbackVerifiedAt, known: false, unpriced: false }
+  return { pricing: pricingAtRate(table.fallback, cnyPerUsd), source: 'fallback', verifiedAt: table.fallbackVerifiedAt, known: false, unpriced: false }
 }
 
 export interface ResolvedClientCost {
@@ -113,8 +118,9 @@ export function resolveCost(
   model: string | null | undefined,
   at: number | null | undefined,
   currency: CostCurrency,
+  cnyPerUsd: number = DEFAULT_CNY_PER_USD,
 ): ResolvedClientCost {
-  const resolved = resolvePricing(table, model)
+  const resolved = resolvePricing(table, model, cnyPerUsd)
   return {
     split: costSplitAt(usage, resolved.pricing, at, currency),
     estimated: !resolved.known,

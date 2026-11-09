@@ -7,7 +7,7 @@
 
 ### 新增
 
-- **Claude 成本估算**——内置 Anthropic Claude 官方 API 标准价（美元 / 1M tokens，2026-11-05 对照 https://platform.claude.com/docs/en/about-claude/pricing 核验）：Fable 5.1 / 5、Mythos 5.1 / 5、Opus 5.5 / 5 / 4.8 / 4.7 / 4.6 / 4.5 / 4.1 / 4、Sonnet 5.5 / 5 / 4.6 / 4.5 / 4、Haiku 4.5。不分高峰/空闲；人民币按固定汇率 6.76 折算。Claude Haiku 5.5 暂不收录（按请求输入长度分档，按轮汇总无法判定档位）。
+- **Claude 成本估算**——内置 Anthropic Claude 官方 API 标准价（美元 / 1M tokens，2026-11-05 对照 https://platform.claude.com/docs/en/about-claude/pricing 核验）：Fable 5.1 / 5、Mythos 5.1 / 5、Opus 5.5 / 5 / 4.8 / 4.7 / 4.6 / 4.5 / 4.1 / 4、Sonnet 5.5 / 5 / 4.6 / 4.5 / 4、Haiku 4.5。不分高峰/空闲；人民币按统一展示汇率折算（配置／默认值、上次成功值或手动刷新）。Claude Haiku 5.5 暂不收录（按请求输入长度分档，按轮汇总无法判定档位）。
 - **写缓存单独计价**——`BucketPrices` 新增可选 `cacheWrite`（Claude 取 5 分钟 TTL 写入价），`pricing.json` 同样支持；缺省时写缓存仍按「缓存未命中」价计（DeepSeek 行为不变）。
 - **模型 ID 归一化**——`normalizeModelId` 转小写、去掉 `anthropic/` 前缀、把 Claude 点号版本改为连字符（`claude-opus-5.5` → `claude-opus-5-5`）；宿主解析、`pricing.json` 键与 client 快照查找共用。
 - **未定价轮次**——`RoundCost` / `ChartCost` / 解析结果新增 `unpriced`。会话合计含未定价轮次时显示为 `≥`（下限）并在面板提示；当前模型未定价时不再显示「$0/1M」刊例价行；压缩成本留空而非显示 `$0`。
@@ -18,6 +18,11 @@
 - **价格键最长匹配**——价格键查找（`matchPricingKey`，内置表、`pricing.json` 与 client 快照共用）改为精确优先、其次最长前缀，与键的插入顺序无关：`claude-opus-5-5-20261101` 命中 Opus 5.5 而非 Opus 5。Claude 键只接受精确 ID 或「ID + 日期快照后缀」（`-YYYYMMDD` / `-latest`），未收录的新版本（如 `claude-opus-5-6`）显示为未定价，不借用相近型号的价格；非 Claude 键保持宽松前缀语义。
 
 ### 修复
+
+- **宿主／客户端价格一致性**——两侧统一先选来源、再做精确／最长前缀匹配；用户文件前缀覆盖优先于内置精确键。
+- **成本分项完整性**——面板分项与比例条补齐缓存命中费用，窄屏允许换行。
+- **统一汇率估值**——Claude、仅 USD 的覆盖及旧人民币单币种条目保留原币种标记，共用同一个已校验的展示汇率；显式双币种原价不变。刷新同步重算历史、压缩、实时估算及徽章；历史请求按会话与汇率去重并防止旧响应覆盖。恢复上次汇率不再阻止配置币种初始化。
+- **定价说明**——面板解释实际换算口径、独立写缓存价及内置 Claude 的 5 分钟 TTL／标准价边界，不再暗示使用了无关的实时汇率。
 
 - **成本异常检测**跳过未定价轮次，其零成本不再拉低基线、导致后续正常计价的轮次被误报为突增。
 

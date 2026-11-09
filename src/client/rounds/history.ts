@@ -3,9 +3,10 @@
  *
  * 指示器与面板共享一份实例，徽章各自订阅权威基准；失败时由调用方
  * 回退到 LiveObservation 增量（如实标注）。模块级 in-flight 去重
- * 使同一会话的同时请求只访问宿主一次。
+ * 使同一会话、同一展示汇率的同时请求只访问宿主一次。
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { DEFAULT_CNY_PER_USD, normalizeCnyPerUsd } from '../../pricing/calc.ts'
 import type { TokenUsageBuckets } from '../../pricing/calc.ts'
 import type { CompactionRecord } from '../../usage/compactions.ts'
 import type { ChartRound, UsageResponse, UsageStatus } from './types.ts'
@@ -23,16 +24,19 @@ export interface HistoryRounds {
 
 interface HistoryState extends Omit<HistoryRounds, 'load'> {
   sessionId: string | undefined
+  rate: number
 }
 
-function emptyState(sessionId: string | undefined): HistoryState {
-  return { sessionId, status: 'idle', rounds: [], compactions: [], totals: null, error: null }
+function emptyState(sessionId: string | undefined, rate: number): HistoryState {
+  return { sessionId, rate, status: 'idle', rounds: [], compactions: [], totals: null, error: null }
 }
 
-function fetchUsage(sessionId: string): Promise<UsageResponse> {
-  const cached = inflight.get(sessionId)
+function fetchUsage(sessionId: string, rate: number): Promise<UsageResponse> {
+  // 汇率是历史成本的展示身份；不同汇率的并发请求不能共用同一份旧金额。
+  const key = `${sessionId}:${rate}`
+  const cached = inflight.get(key)
   if (cached !== undefined) return cached
-  const promise = fetch(`/dsh-usage-chart/usage?session=${encodeURIComponent(sessionId)}`, {
+  const promise = fetch(`/dsh-usage-chart/usage?session=${encodeURIComponent(sessionId)}&cnyPerUsd=${rate}`, {
     headers: { Accept: 'application/json' },
   })
     .then(async (res) => {
@@ -44,44 +48,51 @@ function fetchUsage(sessionId: string): Promise<UsageResponse> {
       reason: error instanceof Error ? error.message : String(error),
     }))
     .finally(() => {
-      inflight.delete(sessionId)
+      inflight.delete(key)
     })
-  inflight.set(sessionId, promise)
+  inflight.set(key, promise)
   return promise
 }
 
-export function useHistoryRounds(sessionId: string | undefined): HistoryRounds {
-  const [state, setState] = useState<HistoryState>(() => emptyState(sessionId))
+export function useHistoryRounds(sessionId: string | undefined, cnyPerUsd: number = DEFAULT_CNY_PER_USD): HistoryRounds {
+  const rate = normalizeCnyPerUsd(cnyPerUsd)
+  const [state, setState] = useState<HistoryState>(() => emptyState(sessionId, rate))
+  const requestVersion = useRef(0)
 
   const load = useCallback(async () => {
     if (sessionId === undefined) return
+    const version = ++requestVersion.current
     setState((current) => {
-      const selected = current.sessionId === sessionId ? current : emptyState(sessionId)
+      const selected = current.sessionId === sessionId && current.rate === rate ? current : emptyState(sessionId, rate)
       return { ...selected, status: selected.status === 'ok' ? 'ok' : 'loading' }
     })
     try {
-      const body = await fetchUsage(sessionId)
+      const body = await fetchUsage(sessionId, rate)
+      if (version !== requestVersion.current) return
       if (body.ok && body.rounds !== undefined) {
-        setState((current) => current.sessionId === sessionId ? {
-          sessionId, status: 'ok', rounds: body.rounds ?? [], compactions: body.compactions ?? [],
+        setState((current) => current.sessionId === sessionId && current.rate === rate ? {
+          sessionId, rate, status: 'ok', rounds: body.rounds ?? [], compactions: body.compactions ?? [],
           totals: body.totals ?? null, error: null,
         } : current)
       } else {
-        setState((current) => current.sessionId === sessionId ? {
+        setState((current) => current.sessionId === sessionId && current.rate === rate ? {
           ...current, status: 'error', compactions: [], error: body.reason ?? 'unknown',
         } : current)
       }
     } catch (e) {
-      setState((current) => current.sessionId === sessionId ? {
+      if (version !== requestVersion.current) return
+      setState((current) => current.sessionId === sessionId && current.rate === rate ? {
         ...current, status: 'error', error: e instanceof Error ? e.message : String(e),
       } : current)
     }
-  }, [sessionId])
+  }, [sessionId, rate])
 
   useEffect(() => {
     void load()
+    // 切换会话/汇率或卸载后，旧响应不得覆盖新身份的成本。
+    return () => { requestVersion.current++ }
   }, [load])
 
-  const selected = state.sessionId === sessionId ? state : emptyState(sessionId)
+  const selected = state.sessionId === sessionId && state.rate === rate ? state : emptyState(sessionId, rate)
   return { ...selected, load }
 }

@@ -19,7 +19,7 @@ Interface preview: light English on the left and dark Simplified Chinese on the 
 
 > Both screenshots use fictional demo data only. They contain no real session content, token counts, costs, balances, or API keys.
 
-The plugin adds a compact indicator below the conversation composer. It shows input/output tokens, cache-hit ratio, estimated cost, active model, a multi-segment context-pressure bar (system/tools/messages breakdown, v1.1.0), and DeepSeek account balance. Click it to open a zero-dependency SVG dashboard with per-turn usage history — including a cost view (every bar shows its own cost value, not just the current round), a duration overlay, anomaly markers, an explainer tooltip (tokens + cost + model + billing tier + duration/TTFT/TPS + **user input source attribution: human/agent/continuation**, v1.1.0 + end reason), horizontally scrollable per-round bars (all rounds, fixed slim bar width, auto-scroll to latest), a dedicated **Context & Compaction Diagnostics section** (system/tools/messages token composition, compaction timeline, freed tokens, summarize cost, context occupancy suggestions, v1.1.0), a dismissible `≈ ¥/$0.00xx` badge on each assistant message, peak/off-peak tiered billing with a live red/green billing-tier tag in the panel (red = peak, green = off-peak, v1.0.1), and official dual-currency pricing (CNY from the Chinese pricing page, USD from the English pricing page — no FX conversion, v1.0.1).
+The plugin adds a compact indicator below the conversation composer. It shows input/output tokens, cache-hit ratio, estimated cost, active model, a multi-segment context-pressure bar (system/tools/messages breakdown, v1.1.0), and DeepSeek account balance. Click it to open a zero-dependency SVG dashboard with per-turn usage history — including a cost view (every bar shows its own cost value, not just the current round), a duration overlay, anomaly markers, an explainer tooltip (tokens + cost + model + billing tier + duration/TTFT/TPS + **user input source attribution: human/agent/continuation**, v1.1.0 + end reason), horizontally scrollable per-round bars (all rounds, fixed slim bar width, auto-scroll to latest), a dedicated **Context & Compaction Diagnostics section** (system/tools/messages token composition, compaction timeline, freed tokens, summarize cost, context occupancy suggestions, v1.1.0), a dismissible `≈ ¥/$0.00xx` badge on each assistant message, peak/off-peak tiered billing with a live red/green billing-tier tag in the panel (red = peak, green = off-peak, v1.0.1), and official dual-currency pricing (native CNY/USD quotes are preserved) and a shared display FX rate for single-currency quotes.
 
 ```
 ▸ Input 12.4M · Output 86.2K · Hit 72% · Cost ≈$0.042 / ≈¥0.284 · demo-model · Balance --
@@ -34,7 +34,7 @@ Click ▸ to open the dashboard panel:
 - **DSH 0.1.2+ and themed docks (v1.1.7)** — Reads conversation nodes from the independent `chat` source on newer DSH versions, with a legacy session-snapshot fallback; keeps the expanded panel anchored when a theme creates a fixed-position containing block.
 - **DSH 0.2.x client-SDK compatibility (v1.1.8)** — Declares client peer ranges spanning both DSH 0.1.x and 0.2.x (tested against 0.2.1-rc.2) so DSH 0.2.x's plugin admission gate accepts the plugin at startup; the retired `@deepseek-ai/dsh-client-runtime` peer is gone, and the assistant-node model identity now also reads the 0.2.x `providerMetadata` field (0.1.x `provenance` still preferred when present, `requestConfig` kept as the last fallback).
 - **Peak / off-peak tiered billing (v1.0.1)** — Peak hours (Beijing time Monday–Friday 09:00–12:00 and 14:00–18:00, UTC 01:00–04:00 and 06:00–10:00) billed at 2× the off-peak rate; all other hours and weekends billed at off-peak rates; rounds bill automatically based on start time (or conservative peak if unknown); live red/green tag in the panel header.
-- **Official dual-currency list pricing (v1.0.1)** — Builtin official CNY and USD prices directly used according to the active display currency — **no FX conversion applied to costs** (matching official billing); "Refresh rate" updates only the informational "1 USD ≈ X CNY" reference note.
+- **Official dual-currency list pricing (v1.0.1)** — Native CNY and USD quotes are preserved. Single-currency quotes (including Claude and user overrides) use one shared display FX rate across history, live estimates, charts and badges.
 - **Multi-currency display (v0.3 / v1.0.1)** — One-click toggle between USD and CNY (persisted in localStorage); indicator, panel, chart, and badges all follow.
 - **Per-round usage & source attribution (v1.1.0)** — "Total / Composition / **Cost**" view modes; cost mode shows each bar's monetary amount; duration line overlay; anomaly marker chips on cost spikes; cache hit miniature ticks; hover explainer card with full round metrics + **user input source attribution: human/agent/continuation**; horizontal scroll for full session history.
 - **Cost badge** — Dismissible `≈ ¥/$0.00xx` badge rendered at the bottom of each assistant message.
@@ -139,7 +139,7 @@ The balance query needs a DeepSeek API key, resolved per request in this order (
         baseUrl: 'https://api.deepseek.com'
         # pricingFile: '/path/to/pricing.json'   # optional: price override file
         # currency: 'cny'        # optional (v0.3): 'usd' (default) | 'cny'
-        # cnyPerUsd: 6.76        # optional (v0.3): FX rate for note display
+        # cnyPerUsd: 6.76        # optional: shared display FX rate for single-currency quotes
         # fxUrl: 'https://open.er-api.com/v6/latest/USD'   # optional (v0.3): custom live rate source
 ```
 
@@ -180,15 +180,30 @@ Built-in standard rates from the [Anthropic pricing page](https://platform.claud
 - Model-id matching normalizes the `anthropic/` prefix and dotted versions (`claude-opus-5.5`); ids with a dated snapshot suffix (`-20261101` / `-latest`) are priced as that model; any other variant (an unlisted newer version, `-fast`, `-batch`, Bedrock ids, …) is treated as unpriced and never borrows a similar model's rate;
 - **Claude Haiku 5.5 is not listed yet**: it is priced by per-request prompt length (≤100K / >100K), which a per-round total cannot determine;
 - Not included: batch discounts, regional / `inference_geo` premiums, Fast mode, tool fees;
-- Anthropic only quotes USD; CNY amounts are converted at a **fixed rate of 6.76** (informational; they do not follow `cnyPerUsd` or the live rate).
+- Anthropic only quotes USD; CNY amounts use the **shared display FX rate**, including `cnyPerUsd`, the saved last successful rate and manually refreshed rates, just like every user single-currency quote.
 
 ### Display currency and live FX rate (v0.3+ / v1.0.1 official dual-currency)
 
-Costs are computed with the **official list price of the selected currency** (CNY quote from the Chinese pricing page, USD quote from the English pricing page — **no FX conversion**, consistent with the official bill; the exception is the USD-only Claude models, whose CNY amounts use the fixed 6.76 rate described above). The cost section has a one-click **CNY/USD** toggle (remembered in the browser); the indicator, panel, chart and badge all follow it. `config.cnyPerUsd` (default 6.76) and the "Refresh rate" button (via Host `/dsh-usage-chart/rate` proxy) are used only for the informational "1 USD ≈ X CNY" note:
+The **CNY/USD** toggle is remembered in the browser. The indicator, panel, charts, compaction costs and message badges share one valuation policy:
 
-- **Multi-source fallback**: when the custom source (`config.fxUrl`) is unreachable, a built-in fallback source (frankfurter.dev) is tried;
-- **Offline resilience**: the last successful rate is persisted, so a refresh while offline keeps the last real rate instead of the fixed default;
-- **Config distribution**: the Host `/dsh-usage-chart/meta` route sends the display currency and rate config to the client.
+- **Explicit dual-currency quotes**: keep DeepSeek's native CNY/USD prices and any user-supplied pair unchanged; do not overwrite native quotes with FX conversion.
+- **Single-currency quotes**: builtin Claude (USD), user `usd`-only or `cny`-only entries and legacy flat CNY entries all use the same `pricingAtRate` function to derive the other currency, including cache-write prices.
+- **One FX source**: start with `config.cnyPerUsd` from `/meta` (invalid/missing values default to 6.76), prefer the browser's saved last successful rate when available, then update and save it on manual refresh through Host `/rate`. The primary source is `config.fxUrl` or open.er-api.com, with frankfurter.dev as fallback. Failed refreshes keep the last successful value.
+- **History after refresh**: `/usage?session=…&cnyPerUsd=…` receives the current display rate and recalculates rounds and compactions; live increments and unit-price notes use that same rate. Requests are deduplicated by session plus rate; stale responses cannot replace another session or rate.
+- **Estimates, not invoices**: historical costs are revalued at the current display rate, not the FX rate at request time. Session logs are never changed. Native dual-currency quotes do not change on refresh.
+- **Complete breakdown**: input (cache miss plus cache write), cache read and output appear in both the cost breakdown and composition bar. They sum to the total; a separate cache-write rate is explained in the panel when present.
+
+Single-currency override example (per 1M tokens, flat across both tiers):
+
+```json
+{
+  "my-usd-model": {
+    "usd": { "cacheMissInput": 4, "cacheHitInput": 0.2, "output": 20, "cacheWrite": 5 }
+  }
+}
+```
+
+Host and client use the same source priority: **user file → builtin → unknown-model handling**. Within each source, exact matching wins, then the longest eligible prefix. A user-file prefix override therefore also wins over a builtin exact key.
 
 ### Uninstall
 
@@ -293,7 +308,7 @@ dsh-usage-chart/
 ## Data and security boundaries
 
 - Token and context data come from the active DSH session projections; per-round chart reads the session log and falls back to page-observed deltas if unavailable.
-- Costs are estimated based on official list prices (user-overridable via `pricing.json`); price resolution happens only on the Host.
+- Costs are estimated based on official list prices (user-overridable via `pricing.json`); the Host supplies the pricing snapshot; Host and Client share source precedence and conversion rules.
 - Currency and rates: `/meta` delivers display config; `/rate` proxies live FX rates via the Host (browser never directly contacts external rate providers); rate URLs require HTTPS (loopback HTTP allowed for local testing).
 - Balance is queried via the same-origin Host proxy (direct browser requests have CORS and key-exposure risks).
 - Host routes only accept same-origin GET requests and set `no-store` on JSON responses; the plugin never sends the API key to the browser.

@@ -50,7 +50,7 @@ Client 半区（浏览器）：src/client/
 - `ctx.sessions.get` 只解析当前已加载会话，跨工作区/未加载会话返回 `session-not-found`；
 - 大会话（26 万事件）折叠正确，但每请求全量计算 + 全量传输（v1.2 HistoryStore 一并考虑截断/缓存）。
 
-## 2. 当前模块地图（v1.1.8）与可选扩展（v1.2）
+## 2. 当前模块地图（v1.1.8 + 未发布更新）与可选扩展（v1.2）
 
 ### 2.1 Host 半区
 
@@ -62,12 +62,21 @@ Client 半区（浏览器）：src/client/
 | **HostRoutes**（`src/index.ts`） | 注册 `/usage` `/balance` `/pricing` `/meta` `/rate` | 编排 RoundFold + PricingResolver + 安全守卫（沿用 `isTrustedRequest`） | 适配器：`webServer` 接缝 |
 | **HistoryStore**（`history/store.ts`，v1.2） | `appendSample(round)` / `queryRange(from, to) → rows` | 聚合/按天落盘、索引、一键清除、导出 | **接缝：历史存储**（2.3） |
 
+### 2.1.1 统一价格与汇率契约（未发布）
+
+- `createPricingResolver(file?, cnyPerUsd?)` 与 client `resolvePricing(table, model, cnyPerUsd?)` 都按文件 → 内置顺序解析，再在各来源内精确／最长有效前缀匹配。快照携带 `source`，不能拍平后忽略来源优先级。
+- 每个 `PriceTier` 可带 `baseCurrency: 'usd' | 'cny'`：只有一种原币种时设置。`pricingAtRate` 从原币种重算派生报价，不修改内置表／文件快照；明确给出的双币种价格不设置标记、保持原价。允许高峰／空闲分别采用单币种或双币种形状。
+- 唯一展示汇率来自 client `currency.ts` store：配置／默认 → 上次成功值 → 手动刷新。`/pricing` 用配置值补全初始形状并保留原币种标记；client 按当前 store 值重新补全。
+- HistoryFeed 将当前汇率显式传给 `/usage?session=…&cnyPerUsd=…`，宿主用该汇率折叠轮次和压缩成本；非法参数回退配置值。参数仅控制展示，不修改事件，不保存历史账单汇率，也不改变其他标签页。
+- HistoryFeed 的请求缓存与状态身份均为“会话 + 汇率”，请求版本防止旧响应回写。指示器、消息徽章共用该身份；观测回退与面板单价说明传同一汇率。刷新使换算金额重新估值，双币种原价不变。
+- 面板成本构成与 RoundBars 统一为输入（未命中 + 写缓存）、缓存命中、输出；费用不得漏桶。
+
 ### 2.2 Client 半区
 
 | 模块 | 接口（小） | 实现（深） | 接缝 / 适配器 |
 |---|---|---|---|
-| **LiveObservation**（`rounds/observed.ts`） | `useObservedRounds(totals, nodes, pricing, currency) → ChartRound[]` | 投影 delta 增量观测 + 轮次封存——指示器与面板回退路径，只回答“本页加载以来的增量”，如实标注 | 投影实时路径（见 2.4） |
-| **HistoryFeed**（`rounds/history.ts`） | `useHistoryRounds(sessionId) → { rounds, status, totals, load }` | 宿主 `/usage` 完整历史折叠；指示器与面板共享实例，徽章读取同一路由；实时投影变化后去抖刷新 | 路由历史路径（见 2.4） |
+| **LiveObservation**（`rounds/observed.ts`） | `useObservedRounds(totals, nodes, pricing, currency, cnyPerUsd) → ChartRound[]` | 投影 delta 增量观测 + 轮次封存——指示器与面板回退路径，只回答“本页加载以来的增量”，如实标注 | 投影实时路径（见 2.4） |
+| **HistoryFeed**（`rounds/history.ts`） | `useHistoryRounds(sessionId, cnyPerUsd) → { rounds, status, totals, load }` | 宿主 `/usage` 完整历史折叠；指示器与面板共享实例，徽章读取同一路由；实时投影变化后去抖刷新 | 路由历史路径（见 2.4） |
 | **RoundBars**（`chart/RoundBars.tsx`） | `{ rounds, mode: absolute\|ratio\|cost, locale } → 图表` | 三种视角堆叠 + 耗时点线叠加 + 异常轮次标记 + 缓存命中迷你趋势 + Tooltip 解释卡；v1.0.0 起**全部轮次**渲染进横向滚动容器（固定细柱宽、自动滚到最新、箭头/渐隐提示越界），零依赖 SVG | 复用现有交互路径（hover/focus/当前轮高亮） |
 | **Anomaly**（`diagnose/anomaly.ts`） | `flagAnomalies(rounds, options?) → { turn, costCny, reasons[] }[]` | 相对近 N 轮成本突增判定 + 归因（缓存命中下降/输出增长/上下文膨胀，结合 `endReason`） | 纯函数；图表与徽章共享 |
 | **ContextReport**（`diagnose/context.ts`，v1.1） | `analyzeContext(pressure, breakdown, compactions, currency) → ContextReport` | 组成（官方 `contextBreakdown`）+ 压缩时间线（`compaction/summary`）+ 阈值建议 | 纯函数，喂投影与事件折叠结果 |
@@ -128,13 +137,14 @@ HistoryStore = { appendSample(round), queryRange(from,to) }   // 接口
 | 模块 | 测试方式 | 现有设施 |
 |---|---|---|
 | RoundFold | node --test 喂两代合成事件流，覆盖 stream-only usage、失败/重试、首 token 与跨步骤 TPS | ✅ `tests/rounds.test.mjs`（合成数据，不读取私人会话日志） |
-| PricingResolver | 注入 source map fake（builtin/file），断言优先级与未知标记 | ✅ `tests/pricing.test.mjs`（临时目录真写读） |
+| PricingResolver | 注入 source map fake（builtin/file），断言优先级与未知标记 | ✅ `tests/pricing.test.mjs` + `tests/pricing-consistency.test.mjs`（真实文件与快照、来源优先级、双向换算、历史/压缩路由） |
 | Anomaly | 喂 round 序列断言 flag | ✅ `tests/anomaly.test.mjs`（经 `lib/client-test.js` 束） |
-| 币种/汇率（v0.3） | 断言 `normalizeFxUrl`、`fetchLiveRate` 多源回退、`/meta`/`/rate` 路由 | ✅ 并入 `tests/core.test.mjs` |
+| 币种/汇率（v0.3） | 断言 `normalizeFxUrl`、`fetchLiveRate` 多源回退、`/meta`/`/rate` 路由 | ✅ `tests/core.test.mjs` + `tests/currency-history.test.mjs`（恢复、失败保留、会话/汇率切换、乱序响应与去重） |
 | Compaction 折叠（v1.1） | 喂合成压缩事件流，断言 shadowed 规模与 summarize 成本核算 | ✅ `tests/compactions.test.mjs` |
 | 上下文诊断（v1.1） | 喂投影与压缩历史，断言容量、分段比例与优化建议 | ✅ `tests/compactions.test.mjs`（经 `lib/context-test.js` 束） |
 | 来源归因（v1.1） | 喂带 `source` 的 `user/message` 事件，断言 `userSource` 归因 | ✅ `tests/compactions.test.mjs` + `tests/rounds.test.mjs`（字符串与对象来源） |
 | manifest / 模型兼容 | peer 与 lock 根元数据、发布声明、README 截图清单、模型回退 | `tests/manifest.test.mjs` + `tests/merge-regression.test.mjs` |
+| UsagePanel | 真实组件静态渲染，断言双语/双币种分项、比例、汇率与写缓存说明 | ✅ `tests/usage-panel.test.mjs`；不等同实机安装/视觉验收 |
 | HistoryStore（v1.2） | memory fake + 临时目录 JSONL 真写读 | 待 v1.2 |
 | HistoryFeed / RoundBars / CostBadge | playwright-core 视觉验证（现有 `scripts/probe-*.mjs` 扩展） | `scripts/verify-render.mjs`；本次发布应单独记录运行时版本/profile/结果，不沿用旧版本结果 |
 

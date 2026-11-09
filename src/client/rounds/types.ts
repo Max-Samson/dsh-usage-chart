@@ -5,11 +5,11 @@
 import type { CostSplit, TokenUsageBuckets } from '../../pricing/calc.ts'
 import type { CompactionRecord } from '../../usage/compactions.ts'
 
-/** 每轮成本（来自 host 折叠，官方 CNY/USD 双币种各一份；观测增量路径为 null）。 */
+/** 每轮成本（来自 host 折叠或观测增量；两币种均已按当前展示汇率补全）。 */
 export interface ChartCost {
-  /** 人民币分拆（官方 CNY 价）。 */
+  /** 人民币分拆（原价或单币种折算价）。 */
   cny: CostSplit
-  /** 美元分拆（官方 USD 价）。 */
+  /** 美元分拆（原价或单币种折算价）。 */
   usd: CostSplit
   /** 是否使用回退估算价。 */
   estimated: boolean

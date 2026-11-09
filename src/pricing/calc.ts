@@ -10,7 +10,7 @@
  *  - 区分「高峰 / 空闲（休闲期 / 优惠期）」两个时段：
  *    高峰时段为北京时间周一至周五 09:00–12:00、14:00–18:00（即 UTC 01:00–04:00、06:00–10:00），
  *    价格为空闲时段的两倍；其余时段（周一至周五其余时间及周六、周日全天）为空闲时段；
- *  - 成本按所选显示币种、以该币种的官方刊例价直接计算（不做汇率换算）。
+ *  - 双币种报价按原价计算；单币种报价由 pricingAtRate 按统一展示汇率补全。
  */
 
 /** token 用量四桶（与 @deepseek-ai/dsh-token-meter 的 TokenUsageProjection 一致）。 */
@@ -55,6 +55,8 @@ export interface PriceTier {
   cny: BucketPrices
   /** 美元刊例价（USD / 1M tokens） */
   usd: BucketPrices
+  /** 原始报价只有一种币种时标记它；另一币种由统一展示汇率补全。双币种原价不设置。 */
+  baseCurrency?: CostCurrency
 }
 
 /** 单模型刊例价（高峰 + 空闲双时段，每时段双币种）。 */
@@ -67,7 +69,7 @@ export interface ModelPricing {
 
 /** 一次用量的成本分拆。金额币种由调用方指定（costSplit 的 currency 参数）。 */
 export interface CostSplit {
-  /** 输入侧（未命中输入 + 写缓存，均按未命中价） */
+  /** 输入侧（未命中输入 + 写缓存；写缓存可有独立单价） */
   input: number
   /** 缓存命中输入 */
   cacheRead: number
@@ -75,6 +77,31 @@ export interface CostSplit {
   output: number
   /** 合计 */
   total: number
+}
+
+/**
+ * 按同一个展示汇率补全单币种报价，供 host 与 client 共用。
+ * 始终从原币种重算（不在上次折算值上累乘），且不修改共享内置表/快照。
+ * 官方或用户显式给出的双币种报价是独立原价，不能用汇率覆盖。
+ */
+export function pricingAtRate(pricing: ModelPricing, cnyPerUsd: number = DEFAULT_CNY_PER_USD): ModelPricing {
+  const rate = normalizeCnyPerUsd(cnyPerUsd)
+  const convert = (prices: BucketPrices, factor: number, divide = false): BucketPrices => {
+    const scale = (value: number): number => divide ? value / factor : value * factor
+    return {
+      cacheMissInput: scale(prices.cacheMissInput),
+      cacheHitInput: scale(prices.cacheHitInput),
+      output: scale(prices.output),
+      ...(prices.cacheWrite === undefined ? {} : { cacheWrite: scale(prices.cacheWrite) }),
+    }
+  }
+  const tierAtRate = (tier: PriceTier): PriceTier => {
+    if (tier.baseCurrency === 'usd') return { ...tier, cny: convert(tier.usd, rate) }
+    if (tier.baseCurrency === 'cny') return { ...tier, usd: convert(tier.cny, rate, true) }
+    return tier
+  }
+  if (pricing.peak.baseCurrency === undefined && pricing.offPeak.baseCurrency === undefined) return pricing
+  return { peak: tierAtRate(pricing.peak), offPeak: tierAtRate(pricing.offPeak) }
 }
 
 /**
@@ -229,8 +256,7 @@ export function formatDuration(ms: number | null | undefined): string {
 }
 
 // ── 成本显示（2026-08-17 起：官方双币种刊例价，成本按显示币种直接计算）───
-// 内部成本按所选币种（cny | usd）计算，不做汇率换算；汇率仅用于
-// 「1 USD ≈ X CNY」参考注记（见 host /rate 与 client currency.ts）。
+// 双币种报价按各自原价计算；单币种报价由 pricingAtRate 使用同一展示汇率补全。
 
 /** 默认美元兑人民币汇率（配置缺失 / 单币种覆盖折算时使用）。 */
 export const DEFAULT_CNY_PER_USD = 6.76

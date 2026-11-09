@@ -11,7 +11,7 @@
  */
 import { useLayoutEffect, useMemo, useRef } from 'react'
 import type { CostCurrency, TokenUsageBuckets } from '../../pricing/calc.ts'
-import { costSplitAt, ZERO_BUCKETS } from '../../pricing/calc.ts'
+import { costSplitAt, DEFAULT_CNY_PER_USD, ZERO_BUCKETS } from '../../pricing/calc.ts'
 import { nodeModelName, type ConversationNode } from '../snapshot.ts'
 import { resolvePricing, type PricingTable } from '../pricing-api.ts'
 import type { ChartCost, ChartRound } from './types.ts'
@@ -60,6 +60,7 @@ export function useObservedRounds(
   nodes: readonly ConversationNode[],
   pricing: PricingTable | null,
   currency: CostCurrency,
+  cnyPerUsd: number = DEFAULT_CNY_PER_USD,
 ): readonly ChartRound[] {
   const ref = useRef<ObservedState>({
     prev: undefined,
@@ -106,7 +107,7 @@ export function useObservedRounds(
     const metaByTurn = turnMeta(nodes)
     const rounds: ChartRound[] = []
     const pushRound = (turn: number, buckets: TokenUsageBuckets): void => {
-      rounds.push(toObservedRound(turn, buckets, metaByTurn.get(turn), pricing, currency))
+      rounds.push(toObservedRound(turn, buckets, metaByTurn.get(turn), pricing, currency, cnyPerUsd))
     }
     for (const [turn, buckets] of ref.current.sealed) {
       pushRound(turn, buckets)
@@ -115,7 +116,7 @@ export function useObservedRounds(
     pushRound(ref.current.openTurn, ref.current.open)
     return rounds
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totals, currentTurn, pricing, currency, nodes])
+  }, [totals, currentTurn, pricing, currency, nodes, cnyPerUsd])
 }
 
 /** 观测增量转 ChartRound：模型/开始时刻/成本从快照 + 节点推导（快照不可用时如实标注 cost 为 null）。 */
@@ -125,12 +126,13 @@ function toObservedRound(
   meta: { model: string | null; startedAt: number | null } | undefined,
   pricing: PricingTable | null,
   currency: CostCurrency,
+  cnyPerUsd: number,
 ): ChartRound {
   const model = meta?.model ?? null
   const startedAt = meta?.startedAt ?? null
   let cost: ChartCost | null = null
   if (pricing !== null) {
-    const resolved = resolvePricing(pricing, model)
+    const resolved = resolvePricing(pricing, model, cnyPerUsd)
     const time = startedAt
     cost = {
       cny: costSplitAt(buckets, resolved.pricing, time, 'cny'),

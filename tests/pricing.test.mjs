@@ -162,8 +162,8 @@ test('parsePricingFile validates entries and accepts dual-currency + legacy shap
     'no-output': { cacheMissInput: 1 },
   }))
   assert.deepEqual(flat['legacy-model'], {
-    peak: { cny: { cacheMissInput: 1, cacheHitInput: 0.02, output: 2 }, usd: { cacheMissInput: 1 / 6.76, cacheHitInput: 0.02 / 6.76, output: 2 / 6.76 } },
-    offPeak: { cny: { cacheMissInput: 1, cacheHitInput: 0.02, output: 2 }, usd: { cacheMissInput: 1 / 6.76, cacheHitInput: 0.02 / 6.76, output: 2 / 6.76 } },
+    peak: { baseCurrency: 'cny', cny: { cacheMissInput: 1, cacheHitInput: 0.02, output: 2 }, usd: { cacheMissInput: 1 / 6.76, cacheHitInput: 0.02 / 6.76, output: 2 / 6.76 } },
+    offPeak: { baseCurrency: 'cny', cny: { cacheMissInput: 1, cacheHitInput: 0.02, output: 2 }, usd: { cacheMissInput: 1 / 6.76, cacheHitInput: 0.02 / 6.76, output: 2 / 6.76 } },
   })
   assert.equal(flat['no-output'], undefined)
 

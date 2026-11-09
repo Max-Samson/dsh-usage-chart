@@ -452,7 +452,7 @@ body[data-ds-dark-theme] .duc-chart-tooltip { box-shadow: 0 8px 22px rgba(0, 0, 
 .duc-legend i,
 .duc-cost-split i { display: inline-block; width: 6px; height: 6px; border-radius: 2px; margin-right: 3px; vertical-align: 0; }
 
-.duc-cost-split { display: flex; align-items: center; gap: 14px; margin-top: 5px; font-size: 11px; color: var(--dsw-alias-label-secondary, rgba(255, 255, 255, 0.72)); }
+.duc-cost-split { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 5px; font-size: 11px; color: var(--dsw-alias-label-secondary, rgba(255, 255, 255, 0.72)); }
 .duc-cost-split span { white-space: nowrap; }
 .duc-cost-split b { margin-left: 3px; color: var(--dsw-alias-label-primary, rgba(255, 255, 255, 0.92)); font-weight: 600; }
 

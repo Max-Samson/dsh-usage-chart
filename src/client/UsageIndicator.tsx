@@ -77,7 +77,7 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
   const { useSession, useChat, useProjection, sessionId } = props
   const locale = useUiLocale()
   const copy = getUiCopy(locale)
-  const { currency } = useDisplayCurrency()
+  const { currency, cnyPerUsd } = useDisplayCurrency()
   const [expanded, setExpanded] = useState(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const toggleRef = useRef<HTMLButtonElement | null>(null)
@@ -88,7 +88,7 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
   const pressure = useProjection('contextPressure') as { pressureTokens?: number; projectedTokens?: number; contextWindow?: number } | undefined
   const breakdown = useProjection('contextBreakdown') as ContextBreakdownData | undefined
   const nodes = useSessionNodes(useChat, useSession)
-  const history = useHistoryRounds(sessionId)
+  const history = useHistoryRounds(sessionId, cnyPerUsd)
   const usageVersion = totals === undefined ? null : [
     totals.uncachedInputTokens, totals.cacheReadTokens, totals.cacheWriteTokens, totals.outputTokens,
   ].join(':')
@@ -100,7 +100,7 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
     return historyCurrent ? host ?? live : live ?? host
   }, [nodes, history.status, history.rounds, historyCurrent])
   const pricing = usePricing()
-  const observedRounds = useObservedRounds(totals, nodes, pricing.table, currency)
+  const observedRounds = useObservedRounds(totals, nodes, pricing.table, currency, cnyPerUsd)
   const { status: balanceStatus, data: balanceData, load: loadBalance } = useBalance(true)
 
   // Projection updates immediately; refresh the authoritative fold after a quiet period.
@@ -120,7 +120,7 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
   const delta = totals !== undefined && history.status === 'ok' ? usageDelta(totals, history.totals) : null
   const estimateBuckets = historyCost !== null && delta !== null ? delta : totals
   const estimate = estimateBuckets !== undefined && pricing.table !== null
-    ? resolveCost(pricing.table, estimateBuckets, model, Date.now(), currency)
+    ? resolveCost(pricing.table, estimateBuckets, model, Date.now(), currency, cnyPerUsd)
     : undefined
   let costSplitTotal: CostTotal | null = historyCurrent ? historyCost : null
   if (!historyCurrent && historyCost !== null && delta !== null && estimate !== undefined) {

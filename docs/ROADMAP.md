@@ -93,16 +93,22 @@ export type SessionEvent = {
 把价格表从代码常量升级为**带来源与时效的状态**（比任何新图表都重要）：
 
 ```
-pricing 解析优先级（host 侧，每次请求实时解析）：
-1. 用户覆盖：数据目录 pricing.json（{ model: { uncachedInput, cacheRead, output, cacheWrite } }）
-2. 内置默认值（当前 PRICING 表迁移而来）
-3. 每个条目带 lastVerifiedAt（来源：官方价格页 / 用户覆盖 / 内置默认）
-4. 未知模型：显式标记（不静默按 0 计），在 UI 中标注“未定价模型”
+pricing 解析优先级（host/client 共用）：
+1. 用户覆盖：数据目录 pricing.json（cacheMissInput / cacheHitInput / output / cacheWrite?）
+2. 内置默认值
+3. 每个来源内精确优先，其次最长有效前缀；文件前缀也优先于内置精确键
+4. 条目核验时间 verifiedAt；未知 Claude 显式未定价并排除成本，其余维持回退估算
 ```
 
 - 内置默认值 + 用户覆盖 + 最后核验日期 + 未知模型显式标记；
 - 官方价格可能调整（[DeepSeek 定价页](https://api-docs.deepseek.com/quick_start/pricing)），
   用户应能知道估算依据与时效；自动抓取官方价格页（借鉴 Ghost011118 的 6h 抓取）作为远期优化，第一版先保证“可覆盖 + 可知晓”。
+
+### 当前补充：统一换算与完整分项（未发布）
+
+官方／用户显式双币种报价保留原价；Claude 与任何用户单币种报价以 `PriceTier.baseCurrency` 标记原币种，统一由 `pricingAtRate` 换算。`currency.ts` 提供唯一展示汇率（配置／默认 → 上次成功值 → 手动实时刷新）；历史 `/usage`、压缩成本、实时增量、图表与徽章使用同一值。刷新是当前展示估值变化，不是改写历史账单。请求身份包含会话和汇率，并防止乱序回写。
+
+面板分项及比例条须覆盖输入、缓存命中、输出三个费用桶；写缓存计入输入并说明独立单价及 TTL 边界。验证见 `pricing-consistency`、`currency-history`、`usage-panel` 回归测试。以下已发布里程碑保留历史事实，不表示这些未发布修改已安装验收。
 
 ## 5. 路线图
 

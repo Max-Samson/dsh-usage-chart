@@ -3,7 +3,7 @@
  *
  * 数据流：/dsh-usage-chart/meta（config 币种 + 汇率）→ 模块级 store；
  * 用户切换（USD/CNY）写入 localStorage 覆盖 config 默认；「刷新汇率」经
- * /dsh-usage-chart/rate 拉到实时汇率（本次会话有效）。组件经
+ * /dsh-usage-chart/rate 拉到实时汇率并保存上次成功值。历史请求与所有换算消费方经
  * useDisplayCurrency()（useSyncExternalStore）读取。
  */
 import { useSyncExternalStore } from 'react'
@@ -78,15 +78,12 @@ export async function fetchDisplayMeta(): Promise<void> {
       typeof body.cnyPerUsd === 'number' && Number.isFinite(body.cnyPerUsd) && body.cnyPerUsd > 0
         ? body.cnyPerUsd
         : DEFAULT_CNY_PER_USD
-    if (userChosen) {
-      if (meta.cnyPerUsd !== cnyPerUsd && meta.rateSource !== 'live') {
-        meta = { ...meta, cnyPerUsd }
-        notify()
-      }
-      return
-    }
-    if ((meta.currency !== currency || meta.cnyPerUsd !== cnyPerUsd) && meta.rateSource !== 'live') {
-      meta = { currency, cnyPerUsd }
+    // 唯一展示汇率：上次成功/新刷新的实时值优先于配置；但持久化汇率
+    // 不应阻止从 /meta 初始化币种。币种和汇率分别合并，避免互相覆盖。
+    const nextCurrency = userChosen ? meta.currency : currency
+    const nextRate = meta.rateSource === 'live' ? meta.cnyPerUsd : cnyPerUsd
+    if (meta.currency !== nextCurrency || meta.cnyPerUsd !== nextRate) {
+      meta = { ...meta, currency: nextCurrency, cnyPerUsd: nextRate }
       notify()
     }
   } catch {
@@ -100,7 +97,7 @@ function storedRateMeta(): { rate: number; fetchedAt: number } | null {
     if (raw === null) return null
     const parsed = JSON.parse(raw) as { rate?: unknown; fetchedAt?: unknown }
     if (typeof parsed.rate === 'number' && Number.isFinite(parsed.rate) && parsed.rate > 0
-      && typeof parsed.fetchedAt === 'number' && Number.isFinite(parsed.fetchedAt)) {
+      && typeof parsed.fetchedAt === 'number' && Number.isFinite(parsed.fetchedAt) && parsed.fetchedAt >= 0) {
       return { rate: parsed.rate, fetchedAt: parsed.fetchedAt }
     }
     return null
@@ -110,6 +107,8 @@ function storedRateMeta(): { rate: number; fetchedAt: number } | null {
 }
 
 export function setLiveRate(rate: number, fetchedAt: number): void {
+  // 所有消费方只接受这一个已校验的展示汇率，不允许 NaN/负值污染历史成本。
+  if (!Number.isFinite(rate) || rate <= 0 || !Number.isFinite(fetchedAt) || fetchedAt < 0) return
   if (meta.currency === 'cny' && meta.cnyPerUsd === rate && meta.rateSource === 'live' && meta.rateFetchedAt === fetchedAt) return
   meta = { ...meta, cnyPerUsd: rate, rateSource: 'live', rateFetchedAt: fetchedAt }
   try {
@@ -125,7 +124,7 @@ export async function refreshLiveRate(): Promise<RateRefreshResult> {
     const res = await fetch('/dsh-usage-chart/rate', { headers: { Accept: 'application/json' } })
     const body = (await res.json()) as { ok?: boolean; rate?: unknown; fetchedAt?: unknown; reason?: string }
     if (body.ok === true && typeof body.rate === 'number' && Number.isFinite(body.rate) && body.rate > 0) {
-      setLiveRate(body.rate, typeof body.fetchedAt === 'number' ? body.fetchedAt : Date.now())
+      setLiveRate(body.rate, typeof body.fetchedAt === 'number' && Number.isFinite(body.fetchedAt) && body.fetchedAt >= 0 ? body.fetchedAt : Date.now())
       return 'ok'
     }
     return body.reason === 'bad-response' ? 'bad-response' : 'request-failed'

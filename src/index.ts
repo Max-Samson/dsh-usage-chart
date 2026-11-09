@@ -39,6 +39,7 @@ export {
   normalizeCnyPerUsd,
   normalizeCurrency,
   normalizeModelId,
+  pricingAtRate,
   tierAt,
   UNPRICED_PRICING,
 } from './pricing/calc.ts'
@@ -104,7 +105,7 @@ export interface Config {
   pricingFile?: string
   /** 可选：成本显示币种，'usd'（默认）或 'cny'。 */
   currency?: string
-  /** 可选：currency: 'cny' 时的美元兑人民币汇率，默认 6.76。 */
+  /** 单币种报价的统一 USD→CNY 展示汇率，默认 6.76；显式双币种原价不受影响。 */
   cnyPerUsd?: number
   /** 可选：实时汇率数据源 URL（须返回 `{ rates: { CNY: number } }` 结构），默认 open.er-api.com。 */
   fxUrl?: string
@@ -369,7 +370,8 @@ export function apply(ctx: Context, config: Config = {}): void {
   // 价格解析（单一真相）：用户覆盖文件（含变更监听）→ 内置刊例价 → 回退。
   const pricingFile = config.pricingFile?.trim() || defaultPricingFile()
   const fileSource = filePricingSource(pricingFile)
-  const resolver = createPricingResolver(fileSource)
+  const cnyPerUsd = normalizeCnyPerUsd(config.cnyPerUsd)
+  const resolver = createPricingResolver(fileSource, cnyPerUsd)
   // 注意返回的是「返回 disposer 的函数」：写成 () => fileSource.dispose() 会在注册时立刻销毁文件源。
   ctx.effect(() => () => fileSource.dispose(), 'dsh-usage-chart: pricing file watcher')
 
@@ -414,14 +416,18 @@ export function apply(ctx: Context, config: Config = {}): void {
       const events: readonly SessionEventLike[] = typeof session.snapshotEvents === 'function'
         ? session.snapshotEvents()
         : session.events ?? []
-      const { totals, rounds } = foldRounds(events, resolver)
-      const compactions = foldCompactions(events, resolver)
+      // 汇率只是展示参数，不写回会话。当前页面的历史、压缩、实时估算共用它；
+      // 非法/缺失值回退配置，不能让不同标签页刷新汇率互相修改全局价格。
+      const requestedRate = Number(url.searchParams.get('cnyPerUsd'))
+      const displayRate = Number.isFinite(requestedRate) && requestedRate > 0 ? requestedRate : cnyPerUsd
+      const displayResolver = createPricingResolver(fileSource, displayRate)
+      const { totals, rounds } = foldRounds(events, displayResolver)
+      const compactions = foldCompactions(events, displayResolver)
       writeJson(res, 200, { ok: true, sessionId, totals, rounds, compactions })
     },
   }), 'dsh-usage-chart: usage route')
 
   const displayCurrency = normalizeCurrency(config.currency)
-  const cnyPerUsd = normalizeCnyPerUsd(config.cnyPerUsd)
   // 汇率源列表：配置源（或默认源） + 内置回退源，去重后依次尝试
   const configuredFxUrl = config.fxUrl?.trim() ?? ''
   const fxUrls = [...new Set([
