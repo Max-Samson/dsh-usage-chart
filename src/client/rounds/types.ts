@@ -15,6 +15,8 @@ export interface ChartCost {
   estimated: boolean
   /** 是否未定价模型。 */
   unknownModel: boolean
+  /** 未定价且不估算（未收录的 Claude 等）：cny/usd 全零，成本未计入。旧 host 不下发时视为 false。 */
+  unpriced?: boolean
   source: 'file' | 'builtin' | 'fallback'
   verifiedAt: number | null
 }

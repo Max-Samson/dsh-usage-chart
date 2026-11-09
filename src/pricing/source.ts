@@ -13,7 +13,7 @@ import { readFile } from 'node:fs/promises'
 import { watch } from 'node:fs'
 import { dirname } from 'node:path'
 import type { BucketPrices, ModelPricing, PriceTier } from './calc.ts'
-import { DEFAULT_CNY_PER_USD } from './calc.ts'
+import { DEFAULT_CNY_PER_USD, matchPricingKey, normalizeModelId } from './calc.ts'
 
 /** 价格来源标识。 */
 export type PricingSourceId = 'builtin' | 'file'
@@ -73,17 +73,75 @@ BUILTIN_PRICING['deepseek-v4-flash-vision-exp'] = FLASH_PRICING
 /** 内置表的核验日期（来源：官方定价页中/英文版，2026-09-10 抓取核验）。 */
 export const BUILTIN_VERIFIED_AT = Date.parse('2026-09-10T00:00:00Z')
 
-/** 未收录模型回退：按 deepseek-flash 刊例价估算并标记 ≈。 */
+/**
+ * Anthropic Claude 官方 API 标准价（USD / 1M tokens）。
+ * 来源：https://platform.claude.com/docs/en/about-claude/pricing（2026-11-05 核验，
+ * 含「Additional models」表）。
+ *  - 不分高峰/空闲：peak 与 offPeak 同价；
+ *  - 官方只有美元报价：人民币按 DEFAULT_CNY_PER_USD 折算（参考值）；
+ *  - cacheWrite 取 5 分钟 TTL 写入价（1 小时 TTL 更贵，用量里无法区分）；
+ *  - 批处理折扣、地区/inference_geo 溢价、Fast mode、工具调用费不计入；
+ *  - Claude Haiku 5.5 按单次请求的输入长度分档（≤100K / >100K），按轮聚合无法
+ *    判定档位，暂不收录（显示为「未定价模型」，不按 DeepSeek 回退价估算）。
+ */
+export const ANTHROPIC_VERIFIED_AT = Date.parse('2026-11-05T00:00:00Z')
+
+function usdFlatPricing(usd: Required<BucketPrices>): ModelPricing {
+  const cny: Required<BucketPrices> = {
+    cacheMissInput: usd.cacheMissInput * DEFAULT_CNY_PER_USD,
+    cacheHitInput: usd.cacheHitInput * DEFAULT_CNY_PER_USD,
+    output: usd.output * DEFAULT_CNY_PER_USD,
+    cacheWrite: usd.cacheWrite * DEFAULT_CNY_PER_USD,
+  }
+  const tier: PriceTier = { cny, usd }
+  return { peak: tier, offPeak: tier }
+}
+
+/** 简写：输入 / 输出 / 5 分钟写缓存 / 缓存命中（USD / 1M）。 */
+function claude(input: number, output: number, cacheWrite: number, cacheHit: number): ModelPricing {
+  return usdFlatPricing({ cacheMissInput: input, cacheHitInput: cacheHit, output, cacheWrite })
+}
+
+export const ANTHROPIC_PRICING: Record<string, ModelPricing> = {
+  // 当前主力型号
+  'claude-fable-5-1': claude(10, 50, 12.5, 0.25),
+  'claude-opus-5-5': claude(4, 20, 5, 0.2),
+  'claude-sonnet-5-5': claude(2, 10, 2.5, 0.1),
+  // Additional models
+  'claude-mythos-5-1': claude(10, 50, 12.5, 0.25),
+  'claude-fable-5': claude(10, 50, 12.5, 1),
+  'claude-mythos-5': claude(10, 50, 12.5, 1),
+  'claude-opus-5': claude(5, 25, 6.25, 0.5),
+  'claude-opus-4-8': claude(5, 25, 6.25, 0.5),
+  'claude-opus-4-7': claude(5, 25, 6.25, 0.5),
+  'claude-opus-4-6': claude(5, 25, 6.25, 0.5),
+  'claude-opus-4-5': claude(5, 25, 6.25, 0.5),
+  'claude-opus-4-1': claude(15, 75, 18.75, 1.5),
+  'claude-opus-4': claude(15, 75, 18.75, 1.5),
+  'claude-sonnet-5': claude(2, 10, 2.5, 0.2),
+  'claude-sonnet-4-6': claude(3, 15, 3.75, 0.3),
+  'claude-sonnet-4-5': claude(3, 15, 3.75, 0.3),
+  'claude-sonnet-4': claude(3, 15, 3.75, 0.3),
+  'claude-haiku-4-5': claude(1, 5, 1.25, 0.1),
+}
+Object.assign(BUILTIN_PRICING, ANTHROPIC_PRICING)
+
+/** 内置条目的核验日期：Anthropic 条目单独核验，其余沿用 BUILTIN_VERIFIED_AT。 */
+function builtinVerifiedAt(model: string | null): number {
+  return model !== null && model in ANTHROPIC_PRICING ? ANTHROPIC_VERIFIED_AT : BUILTIN_VERIFIED_AT
+}
+
+/** 未收录模型回退：按 deepseek-flash 刊例价估算并标记 ≈（Claude 例外，见 isUnpricedWhenUnknown）。 */
 export const FALLBACK_PRICING: ModelPricing = FLASH_PRICING
 
-/** 前缀匹配（如带日期后缀的模型版本）；精确匹配优先。 */
+/** 选键：精确优先，其次最长前缀（Claude 键仅接受日期快照后缀），见 matchPricingKey。 */
+function matchKey(table: Record<string, unknown>, model: string): string | null {
+  return matchPricingKey(Object.keys(table), model)
+}
+
 function matchEntry<T>(table: Record<string, T>, model: string): T | null {
-  const direct = table[model]
-  if (direct !== undefined) return direct
-  for (const [key, value] of Object.entries(table)) {
-    if (model.startsWith(key)) return value
-  }
-  return null
+  const key = matchKey(table, model)
+  return key === null ? null : table[key] ?? null
 }
 
 /** 适配器①：内置刊例价常量。 */
@@ -91,10 +149,11 @@ export function builtinPricingSource(table: Record<string, ModelPricing> = BUILT
   return {
     id: 'builtin',
     resolve(model) {
-      const normalized = model.trim().toLowerCase()
+      const normalized = normalizeModelId(model)
+      const key = matchKey(table, normalized)
       return {
-        pricing: matchEntry(table, normalized),
-        verifiedAt: BUILTIN_VERIFIED_AT,
+        pricing: key === null ? null : table[key] ?? null,
+        verifiedAt: builtinVerifiedAt(key),
       }
     },
     knownModels() {
@@ -121,20 +180,25 @@ function normalizeBucketPrices(value: unknown): BucketPrices | null {
     || !isFiniteNonNegative(record.cacheHitInput)
     || !isFiniteNonNegative(record.output)
   ) return null
-  return {
+  if (record.cacheWrite !== undefined && !isFiniteNonNegative(record.cacheWrite)) return null
+  const prices: BucketPrices = {
     cacheMissInput: record.cacheMissInput,
     cacheHitInput: record.cacheHitInput,
     output: record.output,
   }
+  if (isFiniteNonNegative(record.cacheWrite)) prices.cacheWrite = record.cacheWrite
+  return prices
 }
 
 /** 人民币单价 → 按默认汇率折算美元单价（仅用于单币种覆盖的补全）。 */
 function deriveUsd(cny: BucketPrices): BucketPrices {
-  return {
+  const usd: BucketPrices = {
     cacheMissInput: cny.cacheMissInput / DEFAULT_CNY_PER_USD,
     cacheHitInput: cny.cacheHitInput / DEFAULT_CNY_PER_USD,
     output: cny.output / DEFAULT_CNY_PER_USD,
   }
+  if (cny.cacheWrite !== undefined) usd.cacheWrite = cny.cacheWrite / DEFAULT_CNY_PER_USD
+  return usd
 }
 
 /**
@@ -220,7 +284,7 @@ export function parsePricingFile(text: string): Record<string, FilePricingEntry>
       : {}
   const entries: Record<string, FilePricingEntry> = {}
   for (const [model, value] of Object.entries(raw)) {
-    const normalized = model.trim().toLowerCase()
+    const normalized = normalizeModelId(model)
     if (normalized === '') continue
     const entry = normalizeFileEntry(value)
     if (entry !== null) entries[normalized] = entry
@@ -294,7 +358,7 @@ export function filePricingSource(
     resolve(model) {
       // 自愈：目录尚未存在时首次监听失败；一旦目录就绪，下一次解析会补上监听。
       if (!disposed && watching === null) ensureWatcher()
-      const normalized = model.trim().toLowerCase()
+      const normalized = normalizeModelId(model)
       const entry = matchEntry(entries, normalized)
       if (entry === null) return { pricing: null, verifiedAt: null }
       return {

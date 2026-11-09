@@ -57,6 +57,9 @@ export function flagAnomalies(rounds: readonly ChartRound[], options?: AnomalyOp
 
   for (const round of rounds) {
     if (round.cost === null) continue
+    // 未定价模型的轮次成本全零（未计入），既不判定也不进入基线：否则基线被拉低，
+    // 后续正常计价的轮次会被误报为成本突增。
+    if (round.cost.unpriced === true) continue
 
     // 突增判定以官方人民币价分拆为基准（币种不影响相对突增判定）。
     const cost = round.cost.cny.total

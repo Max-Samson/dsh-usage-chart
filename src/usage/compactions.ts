@@ -150,6 +150,7 @@ export function foldCompactions(
             usd,
             estimated: resolved.estimated,
             unknownModel: !resolved.known,
+            unpriced: resolved.unpriced,
             source: resolved.source,
             verifiedAt: resolved.verifiedAt,
           }
@@ -184,6 +185,7 @@ export function foldCompactions(
         usd,
         estimated: resolved.estimated,
         unknownModel: !resolved.known,
+        unpriced: resolved.unpriced,
         source: resolved.source,
         verifiedAt: resolved.verifiedAt,
       }

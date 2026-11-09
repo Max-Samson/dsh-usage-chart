@@ -216,6 +216,7 @@ body[data-ds-dark-theme] .duc-popover { box-shadow: 0 16px 40px rgba(0, 0, 0, 0.
 .duc-turn-chart { display: block; margin: 0 auto; overflow: visible; color: var(--dsw-alias-label-tertiary, rgba(255, 255, 255, 0.52)); }
 .duc-chart-baseline { stroke: var(--dsw-alias-border-l3, rgba(127, 127, 127, 0.25)); stroke-width: 1; }
 .duc-chart-value { fill: var(--dsw-alias-label-secondary, rgba(255, 255, 255, 0.72)); font-size: 13px; font-weight: 650; }
+.duc-chart-value-unpriced { fill: var(--dsw-alias-label-tertiary, rgba(255, 255, 255, 0.48)); font-style: italic; font-weight: 500; }
 
 /* v1.0.0：横向滚动提示——边缘渐隐（pointer-events: none，不挡交互） */
 .duc-chart-fade {

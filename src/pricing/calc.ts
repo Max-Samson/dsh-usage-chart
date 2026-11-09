@@ -42,6 +42,11 @@ export interface BucketPrices {
   cacheHitInput: number
   /** 输出 */
   output: number
+  /**
+   * 写缓存（可选）。缺省时按「缓存未命中」价计（DeepSeek 口径）；
+   * Anthropic 等单独对缓存写入计价的厂商在此给出（取 5 分钟 TTL 写入价）。
+   */
+  cacheWrite?: number
 }
 
 /** 单时段单价：同一时段同时给出官方人民币与美元报价。 */
@@ -103,7 +108,8 @@ export function tierAt(timeMs: number | null | undefined): PriceTierId {
 /**
  * 按单价估算一次用量成本。`tier` 显式指定计费时段，`currency` 指定币种
  * （金额以该币种的官方刊例价计算）。
- * 注：DeepSeek 目前不对 cacheWrite 计费；若未来计费，未命中价是合理近似。
+ * 写缓存：单价给出 `cacheWrite` 时按其计价（如 Anthropic），否则按未命中价近似
+ * （DeepSeek 目前不对 cacheWrite 单独计费）。写缓存成本计入 `input`。
  */
 export function costSplit(
   usage: TokenUsageBuckets,
@@ -112,7 +118,9 @@ export function costSplit(
   currency: CostCurrency,
 ): CostSplit {
   const prices = pricing[tier][currency]
-  const input = ((usage.uncachedInputTokens + usage.cacheWriteTokens) / 1_000_000) * prices.cacheMissInput
+  const cacheWritePrice = prices.cacheWrite ?? prices.cacheMissInput
+  const input = (usage.uncachedInputTokens / 1_000_000) * prices.cacheMissInput
+    + (usage.cacheWriteTokens / 1_000_000) * cacheWritePrice
   const cacheRead = (usage.cacheReadTokens / 1_000_000) * prices.cacheHitInput
   const output = (usage.outputTokens / 1_000_000) * prices.output
   return { input, cacheRead, output, total: input + cacheRead + output }
@@ -126,6 +134,61 @@ export function costSplitAt(
   currency: CostCurrency,
 ): CostSplit {
   return costSplit(usage, pricing, tierAt(timeMs), currency)
+}
+
+/**
+ * 模型 ID 归一化（host 解析与 client 快照查找共用）：
+ *  - 去空白、转小写；
+ *  - 去掉 `anthropic/` 厂商前缀；
+ *  - Claude 版本号的点号写法统一为连字符（`claude-opus-5.5` → `claude-opus-5-5`）。
+ */
+export function normalizeModelId(model: string): string {
+  let id = model.trim().toLowerCase()
+  if (id.startsWith('anthropic/')) id = id.slice('anthropic/'.length)
+  if (id.startsWith('claude-')) id = id.replace(/(\d)\.(?=\d)/g, '$1-')
+  return id
+}
+
+/** 全零单价（未定价的非 DeepSeek 模型使用：不套 DeepSeek 回退价，避免严重低估）。 */
+const ZERO_PRICES: Required<BucketPrices> = { cacheMissInput: 0, cacheHitInput: 0, output: 0, cacheWrite: 0 }
+const ZERO_TIER: PriceTier = { cny: ZERO_PRICES, usd: ZERO_PRICES }
+export const UNPRICED_PRICING: ModelPricing = { peak: ZERO_TIER, offPeak: ZERO_TIER }
+
+/**
+ * 未收录时是否「不估算」（返回 UNPRICED_PRICING 并标记未定价模型），而非按
+ * deepseek-flash 回退价估算。Claude 单价是 DeepSeek 的数十到上百倍，套回退价
+ * 会严重低估（如 claude-haiku-4-5 按 flash 价约低 7–8 倍，Opus 系列更甚）。
+ * 入参应为 normalizeModelId 之后的 ID。
+ *
+ * 按「含 claude」判定而非「以 claude- 开头」：DSH 内置的 pi-ai 目录里有 Bedrock
+ * 写法（`anthropic.claude-opus-5-5`、`us.anthropic.claude-sonnet-4-5-20250929-v1:0`）
+ * 和显示名写法（`Claude Opus 5.5`），它们同样不能套 DeepSeek 价。这些 ID 不会被
+ * 映射到官方直连价（Bedrock 有地区溢价、`-v1:0` 等后缀），只标记为未定价。
+ */
+export function isUnpricedWhenUnknown(normalizedId: string): boolean {
+  return normalizedId.includes('claude')
+}
+
+/** Claude 键只接受精确 ID 或「ID + 日期快照后缀」（-YYYYMMDD / -latest）。 */
+const CLAUDE_SNAPSHOT_SUFFIX = /^-(?:\d{8}|latest)$/
+
+/**
+ * 在价格表键中为（已归一化的）模型 ID 选键：精确匹配优先，其次最长前缀。
+ *  - 最长前缀：`claude-opus-5-5-20261101` 命中 `claude-opus-5-5` 而不是 `claude-opus-5`，
+ *    与键的插入顺序无关；
+ *  - Claude 键仅在剩余部分是日期快照后缀时才算前缀命中，避免未收录的新版本
+ *    （如 `claude-opus-5-6`）被静默按 `claude-opus-5` 计价；
+ *  - 其余键保持原有的宽松前缀语义（如 `deepseek-flash-2026-09-01`）。
+ */
+export function matchPricingKey(keys: Iterable<string>, model: string): string | null {
+  let best: string | null = null
+  for (const key of keys) {
+    if (key === model) return key
+    if (key === '' || !model.startsWith(key)) continue
+    if (key.startsWith('claude-') && !CLAUDE_SNAPSHOT_SUFFIX.test(model.slice(key.length))) continue
+    if (best === null || key.length > best.length) best = key
+  }
+  return best
 }
 
 /** 输入侧计费 tokens（三个不相交的 prompt 侧桶之和，与 StatsLine 口径一致）。 */

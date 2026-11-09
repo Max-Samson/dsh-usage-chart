@@ -133,8 +133,9 @@ export function analyzeContext(
       time: c.startedAt ?? c.endedAt,
       shadowedTokens: c.shadowedTokenCount,
       model: c.model,
-      costCny: c.cost ? cnyCost : null,
-      costUsd: c.cost ? usdCost : null,
+      // 未定价模型（成本全零、未计入）不显示「$0.00」，与无成本同样留空。
+      costCny: c.cost && c.cost.unpriced !== true ? cnyCost : null,
+      costUsd: c.cost && c.cost.unpriced !== true ? usdCost : null,
     })
   }
 

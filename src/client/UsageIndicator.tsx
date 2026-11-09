@@ -12,7 +12,7 @@ import { getUiCopy, useUiLocale } from './i18n.ts'
 import { resolveCost, usePricing } from './pricing-api.ts'
 import { useHistoryRounds } from './rounds/history.ts'
 import { useObservedRounds } from './rounds/observed.ts'
-import { lastRoundModel, sameUsage, sumRoundCosts, usageDelta } from './rounds/summary.ts'
+import { costTotalPrefix, lastRoundModel, sameUsage, sumRoundCosts, usageDelta, type CostTotal } from './rounds/summary.ts'
 import { nodeModelName, useSessionNodes, type ChatNodesHook, type ConversationNode, type ConversationSnapshot } from './snapshot.ts'
 import type { ContextBreakdownData } from './diagnose/context.ts'
 import { UsagePanel } from './UsagePanel.tsx'
@@ -122,7 +122,7 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
   const estimate = estimateBuckets !== undefined && pricing.table !== null
     ? resolveCost(pricing.table, estimateBuckets, model, Date.now(), currency)
     : undefined
-  let costSplitTotal = historyCurrent ? historyCost : null
+  let costSplitTotal: CostTotal | null = historyCurrent ? historyCost : null
   if (!historyCurrent && historyCost !== null && delta !== null && estimate !== undefined) {
     costSplitTotal = {
       input: historyCost.input + estimate.split.input,
@@ -130,9 +130,10 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
       output: historyCost.output + estimate.split.output,
       total: historyCost.total + estimate.split.total,
       estimated: true,
+      unpriced: historyCost.unpriced || estimate.unpriced === true,
     }
   } else if (!historyCurrent && estimate !== undefined) {
-    costSplitTotal = { ...estimate.split, estimated: true }
+    costSplitTotal = { ...estimate.split, estimated: true, unpriced: estimate.unpriced === true }
   }
   const cacheHit = totals !== undefined ? cacheHitPercent(totals) : null
   const pressurePct = pressurePercent(pressure)
@@ -207,7 +208,7 @@ export function UsageIndicator(props: DockUsageProps): JSX.Element | null {
     parts.push({ key: 'output', text: `${copy.output} ${formatTokens(totals.outputTokens)}` })
     if (cacheHit !== null) parts.push({ key: 'cache', text: `${copy.cache} ${cacheHit}%` })
   }
-  if (costSplitTotal !== null) parts.push({ key: 'cost', text: `${copy.cost} ${costSplitTotal.estimated ? '≈' : ''}${formatMoney(costSplitTotal.total, currency)}`, estimated: costSplitTotal.estimated })
+  if (costSplitTotal !== null) parts.push({ key: 'cost', text: `${copy.cost} ${costTotalPrefix(costSplitTotal)}${formatMoney(costSplitTotal.total, currency)}`, estimated: costSplitTotal.estimated || costSplitTotal.unpriced })
   if (model !== undefined) parts.push({ key: 'model', text: model.replace(/^deepseek-/, '') })
 
   const balanceLabel = balanceStatus === 'loading' || (balanceStatus === 'ok' && balance === undefined)

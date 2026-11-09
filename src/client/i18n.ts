@@ -30,6 +30,10 @@ export interface UiCopy {
   pricingVerifiedLabel: string
   pricingFileLabel: string
   unknownModel: string
+  /** 未定价轮次的成本占位（图表值标签 / 解释卡）。 */
+  unpricedMark: string
+  /** 合计含未定价模型轮次时的说明（合计为下限）。 */
+  unpricedExcluded: string
   costUnavailable: string
   roundUsage: string
   chartDisplay: string
@@ -141,7 +145,7 @@ const COPY: Record<UiLocale, UiCopy> = {
     sessionEmpty: '发送消息后，这里会显示当前会话的 Token 用量。',
     costEstimate: '成本估算', inputCost: '输入', outputCost: '输出',
     pricingNote: (miss, hit, output, currencySuffix, source, verified) => `刊例价（空闲/高峰）：未命中输入 ${miss}/1M，命中输入 ${hit}/1M，输出 ${output}/1M ${currencySuffix}。来源 ${source}${verified}。估算值，不代表官方账单。`,
-    pricingSourceLabel: '价格来源', pricingVerifiedLabel: '核验于', pricingFileLabel: '覆盖文件', unknownModel: '未定价模型', costUnavailable: '价格快照不可用，无法估算成本。',
+    pricingSourceLabel: '价格来源', pricingVerifiedLabel: '核验于', pricingFileLabel: '覆盖文件', unknownModel: '未定价模型', unpricedMark: '未定价', unpricedExcluded: '部分轮次使用未定价模型（如未收录的 Claude 型号），其成本未计入，合计为下限（≥）。', costUnavailable: '价格快照不可用，无法估算成本。',
     roundUsage: '轮次用量', chartDisplay: '图表显示方式', totalMode: '总量', compositionMode: '构成', costMode: '成本',
     totalModeTitle: '按实际 Token 总量比较各轮消耗', compositionModeTitle: '将每轮统一为 100%，比较 Token 构成', costModeTitle: '按各桶 × 单价堆叠成本，柱顶为所选币种金额（按高峰/空闲时段计价）', refresh: '刷新',
     roundExplainer: '每根柱代表一轮提问与回答', totalExplainer: '柱高表示本轮 Token 总量', compositionExplainer: '每根柱统一为 100%，仅比较 Token 构成', costExplainer: '柱高表示本轮估算成本（按刊例价）',
@@ -210,7 +214,7 @@ const COPY: Record<UiLocale, UiCopy> = {
     sessionEmpty: 'Token usage will appear after you send a message.',
     costEstimate: 'Estimated cost', inputCost: 'Input', outputCost: 'Output',
     pricingNote: (miss, hit, output, currencySuffix, source, verified) => `List price (off-peak/peak): cache-miss input ${miss}/1M, cache-hit input ${hit}/1M, output ${output}/1M ${currencySuffix}. Source: ${source}${verified}. Estimate only, not an official bill.`,
-    pricingSourceLabel: 'Price source', pricingVerifiedLabel: 'Verified', pricingFileLabel: 'Override file', unknownModel: 'Unpriced model', costUnavailable: 'Price snapshot unavailable; cost cannot be estimated.',
+    pricingSourceLabel: 'Price source', pricingVerifiedLabel: 'Verified', pricingFileLabel: 'Override file', unknownModel: 'Unpriced model', unpricedMark: 'Unpriced', unpricedExcluded: 'Some rounds used an unpriced model (e.g. an unlisted Claude model); their cost is not included, so the total is a lower bound (≥).', costUnavailable: 'Price snapshot unavailable; cost cannot be estimated.',
     roundUsage: 'Usage by round', chartDisplay: 'Chart display', totalMode: 'Total', compositionMode: 'Mix', costMode: 'Cost',
     totalModeTitle: 'Compare rounds by actual Token usage', compositionModeTitle: 'Normalize each round to 100% and compare Token mix', costModeTitle: 'Stack cost by bucket × unit price; bar top shows the selected currency (peak/off-peak tiered)', refresh: 'Refresh',
     roundExplainer: 'Each bar represents one prompt and response', totalExplainer: 'Bar height shows total Tokens for the round', compositionExplainer: 'Each bar is normalized to 100% to compare Token mix', costExplainer: 'Bar height shows the estimated cost of the round',

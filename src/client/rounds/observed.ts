@@ -137,6 +137,7 @@ function toObservedRound(
       usd: costSplitAt(buckets, resolved.pricing, time, 'usd'),
       estimated: !resolved.known,
       unknownModel: !resolved.known,
+      unpriced: resolved.unpriced,
       source: resolved.source,
       verifiedAt: resolved.verifiedAt,
     }

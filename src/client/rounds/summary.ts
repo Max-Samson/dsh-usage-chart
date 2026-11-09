@@ -31,11 +31,24 @@ export function lastRoundModel(rounds: readonly ChartRound[]): string | undefine
   return undefined
 }
 
+/**
+ * 会话成本合计。`estimated`：含回退估算；`unpriced`：含未定价模型（如未收录的
+ * Claude）的轮次——这些轮次按 0 计入，合计只是下限，UI 显示为「≥」并提示。
+ */
+export type CostTotal = CostSplit & { estimated: boolean; unpriced: boolean }
+
+/** 合计中有未定价轮次时显示「≥」（下限），否则估算显示「≈」。 */
+export function costTotalPrefix(total: Pick<CostTotal, 'estimated' | 'unpriced'>): string {
+  if (total.unpriced) return '≥'
+  return total.estimated ? '≈' : ''
+}
+
 /** Sum separately priced rounds; incomplete history must fall back to a live estimate. */
-export function sumRoundCosts(rounds: readonly ChartRound[], currency: CostCurrency): (CostSplit & { estimated: boolean }) | null {
+export function sumRoundCosts(rounds: readonly ChartRound[], currency: CostCurrency): CostTotal | null {
   if (rounds.length === 0) return null
   const sum: CostSplit = { input: 0, cacheRead: 0, output: 0, total: 0 }
   let estimated = false
+  let unpriced = false
   for (const round of rounds) {
     const cost = round.cost
     if (cost === null) return null
@@ -45,6 +58,7 @@ export function sumRoundCosts(rounds: readonly ChartRound[], currency: CostCurre
     sum.output += split.output
     sum.total += split.total
     estimated ||= cost.estimated
+    unpriced ||= cost.unpriced === true
   }
-  return { ...sum, estimated }
+  return { ...sum, estimated, unpriced }
 }
