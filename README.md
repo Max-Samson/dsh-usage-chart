@@ -63,7 +63,7 @@ Click ▸ to open the dashboard panel:
 
 ## v1.1.9 — Claude pricing and consistent cost valuation
 
-This source tree prepares **v1.1.9**. It includes the Claude standard-price catalog, separate cache-write rates, safer model-id matching and explicit unpriced-round handling, plus consistent Host/Client override priority, complete cost breakdowns and shared FX valuation. All single-currency quotes use one display rate; explicit dual-currency prices remain unchanged. See [v1.1.9 changes and upgrade notes](./CHANGELOG.md).
+**v1.1.9** includes the Claude standard-price catalog, separate cache-write rates, safer model-id matching and explicit unpriced-round handling, plus consistent Host/Client override priority, complete cost breakdowns and shared FX valuation. All single-currency quotes use one display rate; explicit dual-currency prices remain unchanged. See [v1.1.9 changes and upgrade notes](./CHANGELOG.md).
 
 The source version is not proof of npm publication. Run `npm view dsh-usage-chart@1.1.9 version` before using the version-pinned upgrade command below. After upgrading, restart `dsh web` and reload the browser; no session-data migration is required.
 
@@ -267,13 +267,34 @@ node scripts/verify-render.mjs # Full render verification (light/dark themes, ZH
 
 ## Maintainer releases
 
-The package already exists on npm. The repository's `release.yml` workflow publishes through npm Trusted Publishing (the npm Trusted Publisher and GitHub `npm` environment must be configured by the maintainer); ordinary releases do not require local `npm publish`.
+The version is **1.1.9** and its content is finalized. The maintainer chooses when to publish it; a source version or dated changelog is not proof that npm already has the package. Use **one** publication path, not both at once.
 
-1. Use `npm` and the committed `package-lock.json`, matching CI. Keep the manifest and lockfile root versions, dependency ranges, and peer metadata in sync; do not bump an already-prepared version again.
-2. Update both READMEs and changelogs, plus architecture/roadmap notes when contracts change. Keep the version entry pending until release, then set its actual release date. Record clean-profile installation evidence separately for each supported DSH line; never infer it from unit tests.
-3. Run `npm ci`, `npm run verify`, and `npm pack --dry-run`. Rebuild before linking a local checkout: ignored `lib/` output may still belong to an older version. Check preview images and exported runtime/type files in the package list.
-4. Commit the release-preparation changes and wait for CI on the final commit. Create `v<version>` GitHub Release with its tag pointing to that exact commit. Merging source alone does not publish npm packages.
-5. Confirm the release workflow succeeds and `npm view dsh-usage-chart@<version> version` returns the expected version; only then recommend the npm upgrade command. The workflow skips a version already present on npm.
+### Manual npm publication (this release)
+
+The release content is on `fix/pricing-currency-consistency`, not yet on `main`. In your own checkout, with a clean working tree:
+
+```sh
+git fetch origin
+git switch fix/pricing-currency-consistency
+git pull --ff-only origin fix/pricing-currency-consistency
+git status --short                       # must be clean
+node -p "require('./package.json').version"  # must print 1.1.9
+npm ci
+npm run verify
+npm pack --dry-run
+npm view dsh-usage-chart versions --json   # confirm 1.1.9 is not already published
+# Maintainer only: after reviewing the checks above
+npm publish --access public
+npm view dsh-usage-chart@1.1.9 version     # must print 1.1.9 after publication
+```
+
+Stop if the worktree/version is unexpected or npm already has 1.1.9; do not change versions or overwrite existing packages automatically. The `prepublishOnly` hook reruns verification and `prepare` rebuilds ignored `lib/` output. Inspect packaged runtime/type entries and README images; do not upload an old tarball or build from the earlier implementation commit. The maintainer handles npm sign-in and any 2FA prompts directly—never paste credentials into chat.
+
+Both changelogs use the version-record date **2026-11-10 (Asia/Shanghai)**. If publication occurs on a different day, update both before publishing. Record supported-runtime clean-profile tests separately; unit tests or the isolated synthetic-Host browser probe do not certify installation. Users must restart `dsh web` and reload the browser after upgrading. No session-data migration is required.
+
+### Optional GitHub Release workflow
+
+The existing `release.yml` can publish via npm Trusted Publishing on a GitHub Release `published`/`edited` event or manual workflow dispatch. Therefore **do not publish a GitHub Release first when you intend to publish npm manually**. Do not change credentials or publisher settings to follow this guide. If using the workflow instead, tag the final verified release commit and wait for its CI before publishing the Release. After a manual npm publication, a later Release workflow skips the version already present on npm. A branch push or merge by itself does not publish npm.
 
 ## Plugin architecture
 

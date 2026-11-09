@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). 中文版见 [CHANGELOG_ZH.md](./CHANGELOG_ZH.md).
 
-## [1.1.9] - Unreleased
+## [1.1.9] - 2026-11-10
 
 ### Added
 
@@ -30,10 +30,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Validation and upgrade notes
 
-- Release-preparation source validation: Node 20.19.5 / 22.17.0 / 24.22.2, **85 tests passed, zero skipped** (including version/documentation consistency); package dry-run and extracted runtime/type checks passed. No dependency upgrades or peer-range changes.
+- Source validation: Node 20.19.5 / 22.17.0 / 24.22.2, **85 tests passed, zero skipped** (including version/documentation consistency); package dry-run and extracted runtime/type checks passed. No dependency upgrades or peer-range changes.
 - Isolated Chrome with a synthetic Host/session exercised the real components/hooks and plugin routes: configured rate 7.1 → refreshed rate 7.3, history/indicator/badge agreement, CNY/USD switching, saved-rate reload, complete cost breakdown and English 360px layout. This is not installed-DSH or clean-profile certification; no new 0.1.x/0.2.x clean-profile evidence is claimed.
-- Once 1.1.9 is published, install the explicit version, restart `dsh web`, and reload the browser. Existing config and pricing files remain compatible; USD-only overrides are now accepted. Single-currency converted historical amounts can change with the selected display rate; native dual-currency quotes remain unchanged. No session-log migration is required.
-- This entry remains pending until publication; set the actual release date and tag the final verified release commit before publishing. Do not tag the earlier implementation commit.
+- Install the explicit version once it is available on npm, restart `dsh web`, and reload the browser. Existing config and pricing files remain compatible; USD-only overrides are now accepted. Single-currency converted historical amounts can change with the selected display rate; native dual-currency quotes remain unchanged. No session-log migration is required.
+- The version-record date is 2026-11-10 (Asia/Shanghai). Content is finalized for maintainer-controlled npm publication; a dated changelog alone does not prove npm availability. Publish from the final verified release commit, not the earlier implementation commit. If publication occurs on a different date, update both changelogs together.
 
 ## [1.1.8] - 2026-10-22
 

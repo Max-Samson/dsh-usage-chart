@@ -4,7 +4,7 @@
 > 词汇：**模块 / 接口 / 深度 / 接缝（seam）/ 适配器（adapter）/ 杠杆（leverage）/ 局部性（locality）**。
 > 目标版本：v0.2（会话成本解释力）→ v0.3（多币种成本显示）→ **v1.0（首个完整版本：全部轮次横向滚动）** → v1.1（上下文诊断）→ v1.2（跨会话概览），见 [ROADMAP.md](./ROADMAP.md)。
 
-## 1. 现状地图（v1.1.9 · 发布准备）
+## 1. 现状地图（v1.1.9）
 
 ```
 Host 半区（Node）：src/
@@ -50,7 +50,7 @@ Client 半区（浏览器）：src/client/
 - `ctx.sessions.get` 只解析当前已加载会话，跨工作区/未加载会话返回 `session-not-found`；
 - 大会话（26 万事件）折叠正确，但每请求全量计算 + 全量传输（v1.2 HistoryStore 一并考虑截断/缓存）。
 
-## 2. 当前模块地图（v1.1.9 · 发布准备）与可选扩展（v1.2）
+## 2. 当前模块地图（v1.1.9）与可选扩展（v1.2）
 
 ### 2.1 Host 半区
 
@@ -130,7 +130,7 @@ HistoryStore = { appendSample(round), queryRange(from,to) }   // 接口
 | v1.0.0 | **首个完整版本**：RoundBars 全量轮次横向滚动（固定细柱宽、自动滚到最新、箭头/渐隐提示越界）、值标签自适应、图表最小宽自适应、`scripts/probe-chart.mjs` 验证脚本 | 移除 12 轮截断（`MAX_VISIBLE_ROUNDS`）；工具提示改「内容坐标 − scrollLeft」定位 | ✅ 已交付 2026-08-15 |
 | v1.1.0 | ContextReport（`diagnose/context.ts`）、compaction 折叠（独立 `usage/compactions.ts`）、Dock 压力条深化（breakdown 分段 + 悬浮详情）、输入来源归因（`userSource`） | 压力条用 `contextPressure` + `contextBreakdown` 投影，不新开路由；`contextBreakdown` 消费标注近似值；`/usage` 路由返回 compactions | ✅ 已交付 2026-08-26 |
 | v1.1.8 | DSH 0.2.x peer / Context 类型适配、providerMetadata 模型回退、message/attempt 用量与首 token 时序、来源归一化 | 移除退役 runtime peer/inject/类型导入；补齐 manifest、模型与事件回归 | 已发布 2026-10-22；实机验证边界见 2.5 |
-| v1.1.9 | Claude 标准定价、cacheWrite 单价、模型 ID 归一化、未定价下限；来源优先级一致、共享 FX 与完整成本分项 | PriceTier 原币种元数据与纯换算；HistoryFeed 会话＋汇率身份／旧响应保护；补充双语说明 | 发布准备；85 项测试与隔离浏览器验证，不等于 DSH 干净安装认证 |
+| v1.1.9 | Claude 标准定价、cacheWrite 单价、模型 ID 归一化、未定价下限；来源优先级一致、共享 FX 与完整成本分项 | PriceTier 原币种元数据与纯换算；HistoryFeed 会话＋汇率身份／旧响应保护；补充双语说明 | 内容定稿 2026-11-10；85 项测试与隔离浏览器验证，npm 由维护者发布；不等于 DSH 干净安装认证 |
 | v1.2.0 | HistoryStore 接缝 + 设置页历史视图、导出 | 热力图作为入口之一（复用 RoundBars 的 SVG 设施） | 可选 |
 
 ## 4. 测试面（接口即测试面）

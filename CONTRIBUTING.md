@@ -8,7 +8,7 @@ Thanks for improving `dsh-usage-chart`.
 2. Keep Host-only code in `src/index.ts` and browser code in `src/client/`.
 3. Add or update tests for behavior changes.
 4. Run `npm run verify` and `npm pack --dry-run` before opening a pull request.
-5. Update both changelogs and READMEs for user-visible changes; keep architecture/roadmap notes current when contracts change. Leave the release entry pending until publication, then record its actual date.
+5. Update both changelogs and READMEs for user-visible changes; keep architecture/roadmap notes current when contracts change. Keep in-progress entries pending; when the maintainer finalizes a release, date both changelogs consistently. A dated entry does not prove npm publication; adjust it if publication moves to another day.
 
 Pull requests should be focused and should not include generated `lib/`, local profiles, API keys, logs, or screenshots containing account information.
 

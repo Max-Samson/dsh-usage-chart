@@ -63,7 +63,7 @@
 
 ## v1.1.9 — Claude 定价与一致的成本估值
 
-当前源码准备发布 **v1.1.9**：包含 Claude 标准价格表、写缓存独立单价、更安全的模型名匹配与未定价轮次处理，并统一宿主／客户端覆盖优先级、补齐成本分项及共享汇率估值。所有单币种报价使用同一个展示汇率；显式双币种原价不变。完整说明见 [v1.1.9 更新日志](./CHANGELOG_ZH.md)。
+**v1.1.9** 包含 Claude 标准价格表、写缓存独立单价、更安全的模型名匹配与未定价轮次处理，并统一宿主／客户端覆盖优先级、补齐成本分项及共享汇率估值。所有单币种报价使用同一个展示汇率；显式双币种原价不变。完整说明见 [v1.1.9 更新日志](./CHANGELOG_ZH.md)。
 
 源码版本不代表 npm 已发布。使用下面的指定版本升级命令前，请先运行 `npm view dsh-usage-chart@1.1.9 version` 确认版本存在。升级后重启 `dsh web` 并刷新浏览器；无需迁移会话数据。
 
@@ -317,13 +317,34 @@ node scripts/verify-render.mjs # 完整渲染验证（含明暗主题、中英�
 
 ## 维护者发布
 
-本包已经存在于 npm。仓库的 `release.yml` 通过 npm Trusted Publishing 发布（npm Trusted Publisher 与 GitHub 的 `npm` environment 须由维护者配置）；常规发版无需本地执行 `npm publish`。
+版本号为 **1.1.9**，内容已定稿。具体 npm 发布时间由维护者决定；源码版本或有日期的更新日志不代表 npm 已发布。两条发布路径**择一执行**，不要并行。
 
-1. 与 CI 一致，使用 `npm` 和已提交的 `package-lock.json`。同步 manifest 与 lockfile 根节点的版本、依赖范围和 peer 元数据；已准备好的版本不要再次递增。
-2. 同步双语 README、CHANGELOG，以及发生契约变化的架构文档/路线图。版本条目发布前保持待发布，正式发版时填写实际日期。分别记录所支持 DSH 版本线的干净 profile 安装结果，不把单元测试视为安装验收。
-3. 执行 `npm ci`、`npm run verify` 和 `npm pack --dry-run`。本地链接安装前必须重新构建：被忽略的 `lib/` 可能仍是旧版产物。检查打包清单中的截图与导出的运行时/类型文件。
-4. 提交发布准备修改，等待最终提交的 CI 通过，再创建 `v<version>` GitHub Release；tag 必须指向该最终提交。仅合并源码不会发布到 npm。
-5. 确认发布工作流成功，且 `npm view dsh-usage-chart@<version> version` 返回目标版本后，再推荐 npm 升级命令。工作流会跳过已发布的版本。
+### 手动发布 npm（本次方式）
+
+发布内容当前位于 `fix/pricing-currency-consistency`，尚未合并 `main`。请在你自己的仓库副本、工作区干净的前提下执行：
+
+```sh
+git fetch origin
+git switch fix/pricing-currency-consistency
+git pull --ff-only origin fix/pricing-currency-consistency
+git status --short                       # 应无输出
+node -p "require('./package.json').version"  # 应为 1.1.9
+npm ci
+npm run verify
+npm pack --dry-run
+npm view dsh-usage-chart versions --json   # 确认 1.1.9 尚不存在
+# 以下仅由维护者在检查无误后自行执行
+npm publish --access public
+npm view dsh-usage-chart@1.1.9 version     # 发布后应返回 1.1.9
+```
+
+如果工作区／版本不符合预期，或 npm 已存在 1.1.9，应停止，不要自动递增版本或尝试覆盖。`prepublishOnly` 会重跑验证，`prepare` 会重建被忽略的 `lib/`；检查包内运行时入口、类型声明和 README 图片，不要上传旧 tgz，也不要从之前的实现提交发布。npm 登录及可能的 2FA 提示由你直接处理，不要将凭据粘贴到聊天中。
+
+双语日志的版本记录日期为 **2026-11-10（北京时间）**；若实际发布跨日，请在发布前同步调整。各支持版本线的干净 profile 安装结果应单独记录，单元测试或隔离合成宿主浏览器验证不能代替安装验收。用户升级后须重启 `dsh web` 并刷新浏览器；无需迁移会话数据。
+
+### 可选：GitHub Release 自动发布
+
+现有 `release.yml` 在 GitHub Release `published`／`edited` 事件或手动触发 workflow 时，可通过 npm Trusted Publishing 发布。因此本次选择手动 npm 时，**不要先发布 GitHub Release**。不需要为本文改动任何凭据或 publisher 设置。若改走 workflow，应先将 tag 指向最终验证提交并等待 CI，再发布 Release。手动 npm 发布成功后，后续 Release workflow 会跳过 npm 上已存在的版本。仅推送分支或合并代码不会发布 npm。
 
 仓库发现标签继续使用 `dsh-plugin`、`dsh`、`deepseek-harness`。
 
