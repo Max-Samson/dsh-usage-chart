@@ -61,6 +61,12 @@
 - **构建**：esbuild（host 半区 = Node ESM；client 半区 = `window.__ModuleLoader__.load({id, factory})` 工厂包，外部依赖与 DSH web 的 `PLATFORM_MODULES` 完全一致）
 - **可视化**：零依赖手写 SVG（DSH web 未内置图表库；自绘与平台渲染方式一致、体积最小、最稳定）
 
+## v1.1.9 — Claude 定价与一致的成本估值
+
+当前源码准备发布 **v1.1.9**：包含 Claude 标准价格表、写缓存独立单价、更安全的模型名匹配与未定价轮次处理，并统一宿主／客户端覆盖优先级、补齐成本分项及共享汇率估值。所有单币种报价使用同一个展示汇率；显式双币种原价不变。完整说明见 [v1.1.9 更新日志](./CHANGELOG_ZH.md)。
+
+源码版本不代表 npm 已发布。使用下面的指定版本升级命令前，请先运行 `npm view dsh-usage-chart@1.1.9 version` 确认版本存在。升级后重启 `dsh web` 并刷新浏览器；无需迁移会话数据。
+
 ## 安装
 
 前置要求：**[DSH](https://github.com/deepseek-ai/deepseek-harness) ≥ 0.1.0-rc.6** · **Node.js ≥ 20** · PATH 上有 **[pnpm](https://pnpm.io/install)**（`dsh plugin` 会把安装命令转发给 pnpm）。
@@ -76,12 +82,12 @@ dsh plugin --profile web add dsh-usage-chart   # 安装并自动登记为 profil
 dsh web --profile web                          # 启动 DSH Web（已在运行时先停止再启动）
 ```
 
-1.1.8 发布后更新：pnpm 对已安装的依赖重新 `add` 可能显示 `Already up to date`
+**v1.1.9 发布后**更新：pnpm 对已安装的依赖重新 `add` 可能显示 `Already up to date`
 而不升级，请用**显式版本**（推荐）或**先卸载再安装**：
 
 ```sh
 # 方式①：显式指定目标版本
-dsh plugin --profile web add dsh-usage-chart@1.1.8
+dsh plugin --profile web add dsh-usage-chart@1.1.9
 # 方式②：先移除再重装（回到最新版）
 dsh plugin --profile web remove dsh-usage-chart
 dsh plugin --profile web add dsh-usage-chart
@@ -94,7 +100,7 @@ dsh plugin --profile web add dsh-usage-chart
 
 > ⚠️ **未全局安装 dsh（报 `dsh: command not found` / PowerShell `无法将“dsh”项识别为…`）？
 > 把上面每条 `dsh` 都写成 `npx --yes @deepseek-ai/dsh`**，例如
-> `npx --yes @deepseek-ai/dsh plugin --profile web add dsh-usage-chart@1.1.8`
+> `npx --yes @deepseek-ai/dsh plugin --profile web add dsh-usage-chart@1.1.9`
 > （原因与解法见 [FAQ](#常见问题faq) 第一条）。
 
 ### 方式二：从 GitHub 安装（源码构建）
@@ -268,7 +274,7 @@ A：正常且无害——react 由 DSH Web 平台在浏览器端内置，profile
 已把 react 标记为可选 peer，不再报警；0.1.0 的该警告可忽略。
 
 **Q：DSH 0.2.x 提示 `dsh-usage-chart@1.1.7 与 DSH 0.2.1-rc.2 不兼容（要求 @deepseek-ai/dsh-client-locale >=0.1.0-rc.6 <0.2.0, ...）…`，是插件不兼容吗？**
-A：该警告来自 DSH 0.2.x 的**插件准入校验**，不是 DSH 装坏了，也不会丢数据：当插件的 `@deepseek-ai/dsh*` peer 范围不匹配当前运行时版本时 DSH 会拒绝加载，而截至 1.1.7 的插件声明的是仅 0.1.x 的范围。把插件升级到 **≥ 1.1.8**（`dsh plugin --profile web add dsh-usage-chart@1.1.8`）后重启 `dsh web`；若 DSH Web 页面已打开，再刷新页面即可。DSH 本身未受损，会话数据、成本记录与凭据均未丢失——插件只是没有被加载。
+A：该警告来自 DSH 0.2.x 的**插件准入校验**，不是 DSH 装坏了，也不会丢数据：当插件的 `@deepseek-ai/dsh*` peer 范围不匹配当前运行时版本时 DSH 会拒绝加载，而截至 1.1.7 的插件声明的是仅 0.1.x 的范围。把插件升级到 **≥ 1.1.8**（`dsh plugin --profile web add dsh-usage-chart@1.1.9`）后重启 `dsh web`；若 DSH Web 页面已打开，再刷新页面即可。DSH 本身未受损，会话数据、成本记录与凭据均未丢失——插件只是没有被加载。
 
 **Q：网页端配了 API Key，余额仍显示 `–` 或「未配置」？**
 A：请确认插件版本 ≥ 0.1.1（0.1.1 起余额查询才走 DSH 凭据服务读取网页端密钥）；
@@ -375,7 +381,7 @@ dsh-usage-chart/
 | Web UI | React 18 / `conversation.composer.dock` + `conversation.chat.assistant-actions` |
 | 系统 | macOS、Linux、Windows（纯 JavaScript，无原生依赖） |
 
-v1.1.8 验证范围：回归测试覆盖两代事件形状。兼容性 PR 作者报告了 DSH 0.2.1-rc.2 链接构建的浏览器冒烟测试，但这不等于两条版本线均已完成干净 profile 安装验收。移除 `dsh.client.inject` 中的 `dsh-client-runtime` 后，尚未重新进行 0.1.x 实机安装测试。声称完整安装覆盖前，应分别记录运行时版本与干净 profile 测试结果。
+v1.1.9 验证范围：Node 20.19.5 / 22.17.0 / 24.22.2 各 **85 项测试通过、0 跳过**，包括发布版本一致性测试；打包及隔离合成宿主浏览器回归通过（配置／实时汇率、保存后重载、CNY/USD、完整成本分项与英文窄屏）。这些都不是实际 DSH／干净 profile 安装验收。历史证据单独保留：v1.1.8 兼容性 PR 作者报告了 DSH 0.2.1-rc.2 链接构建冒烟，Claude PR 作者报告了 0.2.2-rc.1 应用包／接口／日志检查，均不等于当前版本在两条支持线上的干净 profile 安装认证。移除退役 runtime 注入后，仍未重跑 0.1.x 实机安装。
 
 ## 社区与开源
 

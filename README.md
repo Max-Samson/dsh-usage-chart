@@ -61,6 +61,12 @@ Click ▸ to open the dashboard panel:
 - **Build**: esbuild (Host half = Node ESM; Client half = browser factory bundle matching DSH Web `PLATFORM_MODULES`)
 - **Visualization**: Zero-dependency handcrafted SVG (matches platform rendering, minimal footprint, ultra-stable)
 
+## v1.1.9 — Claude pricing and consistent cost valuation
+
+This source tree prepares **v1.1.9**. It includes the Claude standard-price catalog, separate cache-write rates, safer model-id matching and explicit unpriced-round handling, plus consistent Host/Client override priority, complete cost breakdowns and shared FX valuation. All single-currency quotes use one display rate; explicit dual-currency prices remain unchanged. See [v1.1.9 changes and upgrade notes](./CHANGELOG.md).
+
+The source version is not proof of npm publication. Run `npm view dsh-usage-chart@1.1.9 version` before using the version-pinned upgrade command below. After upgrading, restart `dsh web` and reload the browser; no session-data migration is required.
+
 ## Install
 
 Prerequisites: **[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) ≥ 0.1.0-rc.6** · **Node.js ≥ 20** · **[pnpm](https://pnpm.io/install) on PATH** (`dsh plugin` forwards installs to pnpm).
@@ -75,11 +81,11 @@ dsh plugin --profile web add dsh-usage-chart   # installs and registers the prof
 dsh web --profile web                          # starts DSH Web (stop it first if already running)
 ```
 
-To update after 1.1.8 is published: pnpm may print `Already up to date` when already installed — use an **explicit version** (recommended) or **remove then re-add**:
+To update after **v1.1.9** is published: pnpm may print `Already up to date` when already installed — use an **explicit version** (recommended) or **remove then re-add**:
 
 ```sh
 # Option ①: pin the target version explicitly
-dsh plugin --profile web add dsh-usage-chart@1.1.8
+dsh plugin --profile web add dsh-usage-chart@1.1.9
 # Option ②: remove, then re-add (back to latest)
 dsh plugin --profile web remove dsh-usage-chart
 dsh plugin --profile web add dsh-usage-chart
@@ -223,7 +229,7 @@ A: `npx @deepseek-ai/dsh` runs transiently and installs no global command. Run `
 A: Harmless — react is provided by the DSH Web platform in the browser; the profile does not need it. Plugin ≥ 0.1.1 marks react as an optional peer.
 
 **Q: DSH 0.2.x warns `dsh-usage-chart@1.1.7 与 DSH 0.2.1-rc.2 不兼容（要求 @deepseek-ai/dsh-client-locale >=0.1.0-rc.6 <0.2.0, ...）…` — is the plugin incompatible?**
-A: That warning comes from DSH 0.2.x's **plugin admission gate**, not from a damaged DSH install and not from data loss: DSH refuses to load a plugin whose `@deepseek-ai/dsh*` peer ranges do not match the running runtime version, and plugin versions through 1.1.7 declared 0.1.x-only ranges. Upgrade the plugin to **≥ 1.1.8** (`dsh plugin --profile web add dsh-usage-chart@1.1.8`), then restart `dsh web` and reload the DSH Web page if it was already open. DSH itself was not damaged and no session data, costs, or credentials were lost — the plugin simply was not loaded.
+A: That warning comes from DSH 0.2.x's **plugin admission gate**, not from a damaged DSH install and not from data loss: DSH refuses to load a plugin whose `@deepseek-ai/dsh*` peer ranges do not match the running runtime version, and plugin versions through 1.1.7 declared 0.1.x-only ranges. Upgrade the plugin to **≥ 1.1.8** (`dsh plugin --profile web add dsh-usage-chart@1.1.9`), then restart `dsh web` and reload the DSH Web page if it was already open. DSH itself was not damaged and no session data, costs, or credentials were lost — the plugin simply was not loaded.
 
 **Q: The balance still shows `–` / "not configured" after setting the API key in the web UI?**
 A: Make sure the plugin is ≥ 0.1.1, then restart `dsh web`. As a stopgap, set `DEEPSEEK_API_KEY` or `config.apiKey`.
@@ -322,7 +328,7 @@ dsh-usage-chart/
 | Web UI | React 18 / `conversation.composer.dock` + `conversation.chat.assistant-actions` |
 | OS | macOS, Linux, Windows (pure JavaScript, no native dependencies) |
 
-Validation scope for v1.1.8: regression tests cover both event shapes. The compatibility PR author reported a linked-build browser smoke test on DSH 0.2.1-rc.2; this is not evidence of clean-profile installation on both lines. No live 0.1.x installation was re-run after removing `dsh-client-runtime` from `dsh.client.inject`. Record each runtime/version and clean-profile result before claiming full installation coverage.
+Validation scope for v1.1.9: Node 20.19.5 / 22.17.0 / 24.22.2 each pass **85 tests with zero skipped**, including the release-version consistency check. Package and isolated synthetic-Host browser regressions pass (configured/live FX, saved-rate reload, CNY/USD, complete cost components and English narrow layout). These are not actual DSH/clean-profile installation tests. Historical evidence remains separate: the v1.1.8 compatibility PR author reported a DSH 0.2.1-rc.2 linked-build smoke; the Claude PR author reported 0.2.2-rc.1 bundle/API/log checks. Neither certifies current clean-profile installation on both supported lines. No live 0.1.x installation has been re-run after the retired runtime injection was removed.
 
 ## Community and open source
 

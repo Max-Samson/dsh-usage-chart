@@ -78,3 +78,17 @@ test('all exported runtime and type files exist after build', async () => {
   }
   await Promise.all([...new Set(targets)].map((target) => access(new URL(`../${target.replace(/^\.\//, '')}`, import.meta.url))))
 })
+
+/** 当前版本入口必须同步；历史版本条目不替换，也不把源码版本当作已发布证明。 */
+test('current release version is reflected in both changelogs and upgrade documentation', async () => {
+  for (const file of ['CHANGELOG.md', 'CHANGELOG_ZH.md']) {
+    const text = await readFile(new URL(`../${file}`, import.meta.url), 'utf8')
+    const firstVersion = text.match(/^## \[([^\]]+)\]/m)?.[1]
+    assert.equal(firstVersion, pkg.version, `${file}: first release must match package.json`)
+  }
+  for (const file of ['README.md', 'README_ZH.md']) {
+    const text = await readFile(new URL(`../${file}`, import.meta.url), 'utf8')
+    assert.ok(text.includes(`dsh-usage-chart@${pkg.version}`), `${file}: pinned upgrade version must match package.json`)
+    assert.ok(text.includes(`v${pkg.version}`), `${file}: describe the current source version`)
+  }
+})
